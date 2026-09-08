@@ -9,6 +9,11 @@ import { OrdersService } from '../orders/orders.service';
 import { RecordPaymentDto } from './dto/record-payment.dto';
 import { InitiateRefundDto } from './dto/initiate-refund.dto';
 import { ProviderWebhookDto } from './dto/provider-webhook.dto';
+import {
+  sumSucceededPayments,
+  evaluatePaymentAttempt,
+  determinePaymentStatusAfterRefund,
+} from './payment-math.util';
 
 /**
  * Payments (spec §10). The `Payment`/`PaymentTransaction`/`Refund` schema is provider-
@@ -40,16 +45,22 @@ export class PaymentsService {
       );
     }
 
-    const alreadyPaid = this.sumSucceeded(order.payments);
-    const remaining = new Decimal(order.total.toString()).minus(alreadyPaid);
-    if (remaining.lte(0)) throw new ValidationDomainError('This order is already fully paid.');
-
-    const amount = new Decimal(dto.amount);
-    if (amount.gt(remaining)) {
+    const alreadyPaid = sumSucceededPayments(order.payments);
+    const evaluation = evaluatePaymentAttempt({
+      orderTotal: order.total.toString(),
+      alreadyPaid,
+      attemptedAmount: dto.amount.toString(),
+    });
+    if (evaluation.alreadyFullyPaid) {
+      throw new ValidationDomainError('This order is already fully paid.');
+    }
+    if (evaluation.exceedsRemaining) {
       throw new ValidationDomainError(
-        `Payment of ₹${amount} exceeds the remaining balance of ₹${remaining}.`,
+        `Payment of ₹${dto.amount} exceeds the remaining balance of ₹${evaluation.remaining}.`,
       );
     }
+
+    const amount = new Decimal(dto.amount);
 
     const payment = await this.prisma.$transaction(async (tx) => {
       const created = await tx.payment.create({
@@ -86,7 +97,7 @@ export class PaymentsService {
       newState: { method: dto.method, amount: amount.toString() },
     });
 
-    if (alreadyPaid.plus(amount).gte(new Decimal(order.total.toString()))) {
+    if (evaluation.fullySettlesOrder) {
       await this.settleOrder(organizationId, outletId, orderId, actorUserId);
     }
 
@@ -132,7 +143,14 @@ export class PaymentsService {
           payment.outletId,
           payment.orderId,
         );
-        const paid = this.sumSucceeded(order.payments).plus(payment.amount.toString());
+        // order.payments already reflects this payment as SUCCEEDED (the updateMany above
+        // committed before this fetch) — summing it is the full picture on its own. A
+        // previous version of this line added `payment.amount` a second time on top of that
+        // sum, double-counting this payment and risking settling the order (PAID → COMPLETED)
+        // before it was actually fully paid. Currently dormant in practice (v1 has no real
+        // payment gateway wired up to call this webhook — see this method's doc comment) but a
+        // real bug in the logic itself, caught while extracting this into `payment-math.util.ts`.
+        const paid = new Decimal(sumSucceededPayments(order.payments));
         if (paid.gte(new Decimal(order.total.toString()))) {
           await this.settleOrder(
             payment.organizationId,
@@ -218,16 +236,24 @@ export class PaymentsService {
         data: { status: 'PROCESSED', approvedByUserId: actorUserId },
       });
 
+      // allRefunds already includes *this* refund (the updateMany above committed it as
+      // PROCESSED before this fetch) — summing it is the whole picture on its own. A previous
+      // version of this seeded the reduce with `refund.amount` on top of that sum, double-
+      // counting this refund and risking flipping a payment to REFUNDED while genuinely only
+      // partially refunded — the same double-counting shape as the bug fixed in
+      // `handleProviderWebhook` above, caught the same way (extracting this into
+      // `payment-math.util.ts` and noticing the aggregate already had the update baked in).
       const allRefunds = await tx.refund.findMany({
         where: { paymentId: refund.paymentId, status: 'PROCESSED' },
       });
       const totalRefunded = allRefunds.reduce(
-        (sum, r) => sum.plus(r.amount.toString()),
-        new Decimal(refund.amount.toString()),
+        (sum: Decimal, r: { amount: { toString(): string } }) => sum.plus(r.amount.toString()),
+        new Decimal(0),
       );
-      const newStatus = totalRefunded.gte(new Decimal(refund.payment.amount.toString()))
-        ? 'REFUNDED'
-        : 'PARTIALLY_REFUNDED';
+      const newStatus = determinePaymentStatusAfterRefund(
+        refund.payment.amount.toString(),
+        totalRefunded.toString(),
+      );
       await tx.payment.updateMany({
         where: { id: refund.paymentId, organizationId },
         data: { status: newStatus },
@@ -264,12 +290,6 @@ export class PaymentsService {
   // ---------------------------------------------------------------------
   // Internal helpers
   // ---------------------------------------------------------------------
-
-  private sumSucceeded(payments: { status: string; amount: { toString(): string } }[]): Decimal {
-    return payments
-      .filter((p) => p.status === 'SUCCEEDED')
-      .reduce((sum, p) => sum.plus(p.amount.toString()), new Decimal(0));
-  }
 
   /**
    * PAID then immediately COMPLETED — v1 has no separate "mark completed" staff action once
