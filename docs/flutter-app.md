@@ -164,9 +164,41 @@ Kitchen/KDS, Billing, Reports) builds on top of, not those features themselves:
   (`resolvedReportRangeProvider`) and having `ReportsScreen`'s `onRefresh` explicitly invalidate
   it alongside the three report providers, so every pull-to-refresh actually recomputes "now".
 
-**Not built yet**: Staff management, offline/local-cache behavior (tracked with the LAN/offline
-backend slice — docs/offline-mode.md), push/local notifications, and the Windows/Android
-platform scaffolding itself (see below).
+- **Staff management** (`lib/features/staff/`) — the last feature-area placeholder to land.
+  `StaffScreen` lists every staff account in the organization (`GET /staff`), each showing a
+  status badge (Active/Inactive/Suspended) and a chip per role assignment (`"Manager · Connaught
+  Place"`, or `"Owner · All outlets"` for an org-wide one). Add-staff and edit-staff bottom
+  sheets are gated on `staff.manage` (the tab itself only needs `staff.view`), same UX-only
+  pattern as everywhere else. A staff member can hold **more than one** role assignment
+  simultaneously — the backend's `UsersService.update` only deletes-and-recreates the
+  `UserRole` row matching the *same* `(userId, outletId)` pair it's given, so reassigning
+  someone to a different outlet *adds* a role rather than moving their existing one; this is
+  surfaced honestly in the UI (role chips show every assignment, not just the latest) and
+  documented on `StaffRepository.updateStaff` rather than papered over with a "replace all
+  roles" UX the backend doesn't actually support. The edit sheet's role dropdown defaults to a
+  `null` "No change" sentinel — deliberately distinct from `null` meaning "org-wide" on the
+  outlet dropdown that appears once a role *is* picked — since only explicitly sending
+  `roleName` at all is what triggers a reassignment. New repositories: `StaffRepository`
+  (`/staff`), `RolesRepository` (`GET /roles`, just enough to populate the role dropdown — not
+  the full permission-checkbox admin UI the endpoint's backend doc comment mentions, which is
+  out of scope for this slice), `OutletsRepository` (`GET /outlets`, ungated beyond being
+  signed in — used only to populate the outlet dropdown). New pure-logic tests:
+  `test/features/staff/staff_models_test.dart` (9 tests — JSON parsing, org-wide vs.
+  outlet-scoped roles, multiple simultaneous role assignments, the unrecognized-status guard).
+
+  One deliberate deviation from this app's usual `_SheetShell` (`tables_management_screen.dart`,
+  duplicated here rather than shared — see its own doc comment): the Staff sheets wrap their
+  `Column` in a `SingleChildScrollView`, since the Add-staff sheet alone has six fields
+  (name/email/password/phone/role/outlet) and would be a real overflow risk on a short device
+  with the keyboard up, unlike the shorter two/three-field sheets in Tables management that the
+  original `_SheetShell` was written for.
+
+**Not built yet**: offline/local-cache behavior (tracked with the LAN/offline backend slice —
+docs/offline-mode.md), push/local notifications, and the Windows/Android platform scaffolding
+itself (see below). Every permission-gated feature-area destination in the nav shell (POS,
+Tables, Kitchen, Billing, Reports, Staff) now has a real screen — only Settings remains a
+placeholder, and it's expected to stay minimal (spec has no dedicated settings-screen
+requirements beyond sign-out, already in the nav shell itself).
 
 ## Why there's no `android/`, `ios/`, or `windows/` folder here
 
@@ -199,7 +231,7 @@ correctness (including several real mistakes caught and fixed during that review
 `int.clamp()` returning `num`, not `int`, in `home_shell.dart`, and the two POS bugs described
 above), but that is not a substitute for the analyzer and test runner actually running. The
 widget screens (`PosHomeScreen`, `OrderBuilderScreen`, `TablesManagementScreen`, `KdsScreen`,
-`BillingScreen`/`BillingDetailScreen`, `ReportsScreen`, and everything under
+`BillingScreen`/`BillingDetailScreen`, `ReportsScreen`, `StaffScreen`, and everything under
 `lib/features/pos/widgets/`) are the highest-risk code in the app precisely because hand-review
 cannot simulate the widget tree, layout constraints, or `Tab`/`TabController`/`SegmentedButton`
 lifecycle the way `flutter run` or a widget test harness would — treat those as needing the most
@@ -218,15 +250,21 @@ selector, but pull-to-refresh on the Reports tab (`resolvedReportRangeProvider`'
 see the Reports section above) is worth specifically exercising too, since that's exactly the
 class of "provider only recomputes when something it watches changes, not on a timer" bug that
 hand-review is good at catching in isolation but easy to miss end-to-end without actually running
-the refresh gesture. The test files under `test/core/auth/`, `test/core/money/`, and
-`test/features/` (`jwt_decoder_test.dart`, `access_token_claims_test.dart`, `money_test.dart`,
+the refresh gesture; and `staff_screen.dart`'s two nullable `DropdownButtonFormField<String?>`
+dropdowns (role/outlet, both using a `null`-valued item as a "No change"/"Org-wide" sentinel) are
+this app's first use of that pattern — every earlier dropdown in this codebase has a non-nullable
+value — so worth a specific look even though it's a standard, well-documented Flutter idiom.
+The test files under `test/core/auth/`, `test/core/money/`, and `test/features/`
+(`jwt_decoder_test.dart`, `access_token_claims_test.dart`, `money_test.dart`,
 `pos_cart_test.dart`, `kds_models_test.dart`, `billing_models_test.dart`,
-`reports_models_test.dart`) have no platform-channel or rendering dependency —
-`pos_cart_test.dart` exercises `PosCartNotifier`'s state transitions and subtotal math directly,
-`kds_models_test.dart` exercises `KdsTicket`/`KdsTicketItem` JSON parsing and the active-ticket
-filter, `billing_models_test.dart` exercises `Invoice` JSON parsing, `reports_models_test.dart`
-exercises `SalesSummary`/`TopItem`/`PaymentBreakdownLine` JSON parsing and zero-default handling,
-none touching a widget — and should be the first thing to run once the SDK is available:
+`reports_models_test.dart`, `staff_models_test.dart`) have no platform-channel or rendering
+dependency — `pos_cart_test.dart` exercises `PosCartNotifier`'s state transitions and subtotal
+math directly, `kds_models_test.dart` exercises `KdsTicket`/`KdsTicketItem` JSON parsing and the
+active-ticket filter, `billing_models_test.dart` exercises `Invoice` JSON parsing,
+`reports_models_test.dart` exercises `SalesSummary`/`TopItem`/`PaymentBreakdownLine` JSON parsing
+and zero-default handling, `staff_models_test.dart` exercises `StaffMember` JSON parsing
+including multiple simultaneous role assignments and the unrecognized-status guard, none
+touching a widget — and should be the first thing to run once the SDK is available:
 
 ```bash
 cd apps/restaurant_app

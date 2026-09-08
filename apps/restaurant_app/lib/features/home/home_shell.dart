@@ -8,6 +8,7 @@ import '../billing/billing_screen.dart';
 import '../kitchen/kds_screen.dart';
 import '../pos/pos_home_screen.dart';
 import '../reports/reports_screen.dart';
+import '../staff/staff_screen.dart';
 import '../tables/tables_management_screen.dart';
 import 'placeholder_screen.dart';
 
@@ -66,7 +67,7 @@ final _destinations = <_Destination>[
     label: 'Staff',
     icon: Icons.people,
     requiredPermission: Permissions.staffView,
-    screen: PlaceholderScreen(title: 'Staff', icon: Icons.people),
+    screen: StaffScreen(),
   ),
   const _Destination(
     label: 'Settings',
