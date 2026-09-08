@@ -43,7 +43,8 @@ npm run --workspace services/api seed
 # Start the API in watch mode
 npm run dev:api
 
-# In another terminal, start the customer PWA
+# In another terminal, start the customer PWA (see docs/customer-web.md)
+cp apps/customer_web/.env.example apps/customer_web/.env.local
 npm run dev:web
 ```
 
@@ -56,7 +57,7 @@ flutter pub get
 flutter run -d windows   # or -d <android-device-id>
 ```
 
-See `docs/local-development.md` for the full walkthrough, `docs/flutter-app.md` for what's implemented in the staff app so far, and `docs/troubleshooting.md` if something doesn't come up.
+See `docs/local-development.md` for the full walkthrough, `docs/flutter-app.md`/`docs/customer-web.md` for what's implemented in each frontend so far, and `docs/troubleshooting.md` if something doesn't come up.
 
 ## Why DineEasy is different
 

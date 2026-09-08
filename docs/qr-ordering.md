@@ -33,7 +33,7 @@ The customer web app reads menu items through the same `isAvailable`/`isActive` 
 
 ## Order tracking
 
-`GET /api/v1/qr/orders/:id` (`OrdersGuestController`, gated by the dining-session token — a guest can only ever fetch an order belonging to their own session, checked server-side against `Order.diningSessionId`) plus a WebSocket subscription to that order's room (not yet built — see docs/architecture.md §15) will give live status updates (`docs/architecture.md` §8) without polling, falling back to poll-on-reconnect so a flaky guest Wi-Fi connection never leaves the tracking screen stuck.
+`GET /api/v1/qr/orders/:id` (`OrdersGuestController`, gated by the dining-session token — a guest can only ever fetch an order belonging to their own session, checked server-side against `Order.diningSessionId`) plus a WebSocket subscription to that dining session's `RealtimeGateway` room (`session:<diningSessionId>` — built; see `docs/architecture.md` §8 and §15, and `docs/customer-web.md`) give live status updates without polling, with a 15s poll as a fallback for when the socket never connects at all (a captive portal, a proxy blocking WebSocket upgrades) — so a flaky guest Wi-Fi connection never leaves the tracking screen stuck either way.
 
 ## What's explicitly out of scope for v1
 
