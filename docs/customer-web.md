@@ -43,17 +43,36 @@ eventually, `services/api` itself) that talks to the API entirely client-side.
   generated from the backend's OpenAPI spec (`docs/api.md`), and for how this move was verified
   end-to-end (`tsc -b && vite build` and `oxlint` both still pass) despite this sandbox's
   Prisma restriction, since neither touches the database.
+- **Installable PWA** (`vite.config.ts`, `public/icon-*.png`): `vite-plugin-pwa` (Workbox under
+  the hood) now generates a real `manifest.webmanifest` and service worker at build time, so the
+  app is add-to-home-screen installable with a standalone window, not just "works great on
+  mobile web." Deliberately scoped to *installability and a fast-loading precached app shell*,
+  not offline ordering: the service worker precaches only the built static assets (JS/CSS/HTML/
+  icons/manifest — Workbox's default `globPatterns` scope, which never looks past the `dist`
+  build output) and has zero `runtimeCaching` rules, so every `/api/*` call still goes straight
+  to the network, untouched by the service worker — confirmed by inspecting the generated
+  `dist/sw.js` directly rather than assuming the config did what it says (see Verification
+  status below). This is a deliberate design match, not an oversight: docs/offline-mode.md is
+  explicit that the guest side has no offline queue ("an order the kitchen never sees isn't
+  useful to queue for later"), and a service worker that silently cached or replayed API calls
+  would quietly violate that. `registerType: 'autoUpdate'` reloads onto the latest build in the
+  background rather than prompting — there's no persistent guest account or long-lived state to
+  protect from a surprise reload (session/cart both live in `sessionStorage`, scoped to one
+  sitting), so always running the newest build beats risking a stale cached ordering flow.
+  Icons (`icon-192.png`/`icon-512.png`/`icon-maskable-512.png`) are rendered from the existing
+  `public/favicon.svg` mark via `rsvg-convert`; the maskable variant pads the glyph onto a
+  `#e85d2c` (the app's actual accent color, matching `index.html`'s `theme-color` and
+  `src/index.css`'s `--accent`) square background well inside the safe zone, so it survives a
+  circular/squircle OS icon mask without clipping.
 
 ## What's explicitly not built
 
 Online payment (spec says "pay at counter, or online payment when configured" — no gateway is
 wired up in v1 anywhere in this codebase, see `docs/payments.md`), any form of guest account or
 order history across visits (spec §4/§64 — a dining session's guest identity doesn't persist
-past that session, by design), a service worker / installable-PWA manifest (the app is a PWA in
-the "works great on mobile web, no install required" sense, not yet in the
-add-to-home-screen/offline-cache sense — that's a reasonable follow-up once the rest of the
-ordering flow has been used for real), and multi-language support (menu content is whatever
-language staff entered it in).
+past that session, by design), and multi-language support (menu content is whatever language
+staff entered it in). Installability (above) is done; actual offline *ordering* is not, and by
+design never will be on the guest side — see docs/offline-mode.md.
 
 ## Running it
 
@@ -77,3 +96,18 @@ returns a working HTML shell. What has **not** been verified is a real end-to-en
 live `services/api` (that needs `prisma generate`, which this sandbox can't do — see
 docs/troubleshooting.md) — the API contracts above were read directly from the backend source
 (controllers, DTOs, Prisma schema), not exercised over the network.
+
+The PWA build (`vite-plugin-pwa`) is verified the same concrete way, not just configured and
+assumed correct: `npm run build` actually produces `dist/manifest.webmanifest` and `dist/sw.js`,
+and both were read directly rather than trusted — the manifest's icons/colors/`start_url` match
+what `vite.config.ts` declares, and `dist/sw.js` was inspected to confirm its only
+`registerRoute` call is the SPA navigation fallback (`NavigationRoute`, `denylist: [/^\/api\//]`)
+with zero runtime-caching routes registered for anything else, i.e. no `/api/*` traffic is ever
+intercepted. `npm audit` flags two moderate/high advisories in `vite-plugin-pwa`'s own build-time
+dependency chain (`ajv`, `picomatch`, both used only by `workbox-build` while generating the
+service worker at build time — neither ships to the browser or runs against user input) — a
+known, low-risk, dev-tooling-only item, not something `npm audit fix` resolves without a version
+bump this session hasn't attempted to verify doesn't break the build. What's **not** verified:
+actually installing the built app on a phone/desktop and confirming the OS install prompt and
+standalone launch behave as expected — this sandbox has no browser to do that in, only the build
+output and generated files to inspect.
