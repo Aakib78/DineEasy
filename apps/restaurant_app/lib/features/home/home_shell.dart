@@ -5,6 +5,7 @@ import '../../core/auth/access_token_claims.dart';
 import '../../core/auth/auth_session.dart';
 import '../../core/rbac/permissions.dart';
 import '../pos/pos_home_screen.dart';
+import '../tables/tables_management_screen.dart';
 import 'placeholder_screen.dart';
 
 class _Destination {
@@ -38,7 +39,7 @@ final _destinations = <_Destination>[
     label: 'Tables',
     icon: Icons.table_restaurant,
     requiredPermission: Permissions.tablesView,
-    screen: PlaceholderScreen(title: 'Tables', icon: Icons.table_restaurant),
+    screen: TablesManagementScreen(),
   ),
   const _Destination(
     label: 'Kitchen',

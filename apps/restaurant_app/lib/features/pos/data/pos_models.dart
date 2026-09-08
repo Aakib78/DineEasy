@@ -28,27 +28,57 @@ TableStatus _tableStatusFromJson(String value) => switch (value) {
   _ => TableStatus.available,
 };
 
+/// The reverse of `_tableStatusFromJson`, for `PATCH /tables/:id` — see UpdateTableDto on the
+/// backend (`@IsIn(['AVAILABLE', 'OCCUPIED', 'RESERVED', 'DISABLED'])`).
+String tableStatusToJson(TableStatus status) => switch (status) {
+  TableStatus.available => 'AVAILABLE',
+  TableStatus.occupied => 'OCCUPIED',
+  TableStatus.reserved => 'RESERVED',
+  TableStatus.disabled => 'DISABLED',
+};
+
+/// The `RestaurantTable.qrCode` nested row — `TABLE_INCLUDE` on the backend always joins it
+/// (schema: `tableId` is `@unique`, so a table has exactly one). Used by the Tables management
+/// screen (`lib/features/tables/`) to show/regenerate a table's scan token; the POS floor view
+/// (`lib/features/pos/`) doesn't need it and only reads the fields above.
+class TableQrCode {
+  const TableQrCode({required this.token, required this.isActive});
+
+  factory TableQrCode.fromJson(Map<String, dynamic> json) => TableQrCode(
+    token: json['token'] as String,
+    isActive: json['isActive'] as bool? ?? true,
+  );
+
+  final String token;
+  final bool isActive;
+}
+
 class RestaurantTable {
   const RestaurantTable({
     required this.id,
     required this.floorId,
     required this.name,
     required this.capacity,
+    required this.displayOrder,
     required this.status,
     required this.hasOpenDiningSession,
+    required this.qrCode,
   });
 
   factory RestaurantTable.fromJson(Map<String, dynamic> json) {
     final sessions = json['diningSessions'] as List<dynamic>? ?? const [];
+    final qrJson = json['qrCode'] as Map<String, dynamic>?;
     return RestaurantTable(
       id: json['id'] as String,
       floorId: json['floorId'] as String,
       name: json['name'] as String,
       capacity: json['capacity'] as int? ?? 2,
+      displayOrder: json['displayOrder'] as int? ?? 0,
       status: _tableStatusFromJson(json['status'] as String? ?? 'AVAILABLE'),
       // TablesService.TABLE_INCLUDE only ever returns the current OPEN session, if any — see
       // its doc comment on the backend ("so the POS floor view can render occupancy at a glance").
       hasOpenDiningSession: sessions.isNotEmpty,
+      qrCode: qrJson != null ? TableQrCode.fromJson(qrJson) : null,
     );
   }
 
@@ -56,8 +86,10 @@ class RestaurantTable {
   final String floorId;
   final String name;
   final int capacity;
+  final int displayOrder;
   final TableStatus status;
   final bool hasOpenDiningSession;
+  final TableQrCode? qrCode;
 }
 
 class Modifier {

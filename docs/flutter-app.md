@@ -70,11 +70,22 @@ Kitchen/KDS, Billing, Reports) builds on top of, not those features themselves:
   which a fast enough double-tap could collide on — fixed with `nextCartLineId()`
   (`lib/features/pos/data/pos_cart_line.dart`), which appends a monotonic in-memory counter.
 
-**Not built yet**: Tables (floor/table *management* — creating/renaming/disabling tables, beyond
-what POS's read-only table picker covers), Kitchen/KDS, Billing, Reports, Staff management,
-offline/local-cache behavior (tracked with the LAN/offline backend slice —
-docs/offline-mode.md), push/local notifications, and the Windows/Android platform scaffolding
-itself (see below).
+- **Tables management** (`lib/features/tables/tables_management_screen.dart`) — floor/table
+  *setup*, distinct from the POS's read-only table picker above: add a floor, add a table to a
+  floor (name + seat count), edit an existing table (rename, change seat count, change `status`
+  — `AVAILABLE`/`OCCUPIED`/`RESERVED`/`DISABLED`, a manual staff override independent of whether
+  an order actually exists), and rotate a table's QR token (`POST /tables/:id/qr/regenerate`) —
+  any dining session already open on that table is unaffected by a rotation, only future scans
+  see the new token. Reuses the POS feature's `Floor`/`RestaurantTable`/`TablesRepository`
+  rather than a second copy of the same models (`pos_models.dart` gained `RestaurantTable.qrCode`
+  and `RestaurantTable.displayOrder` for this screen's benefit; the POS floor view ignores both).
+  The create/edit controls are additionally gated on `tables.manage` (not just the `tables.view`
+  that unlocks the tab itself) so a view-only role doesn't see buttons that are guaranteed to
+  403 — UX only, per usual; `PermissionsGuard` on the server is the actual enforcement.
+
+**Not built yet**: Kitchen/KDS, Billing, Reports, Staff management, offline/local-cache behavior
+(tracked with the LAN/offline backend slice — docs/offline-mode.md), push/local notifications,
+and the Windows/Android platform scaffolding itself (see below).
 
 ## Why there's no `android/`, `ios/`, or `windows/` folder here
 
@@ -106,11 +117,17 @@ success). Concretely, nobody has run `flutter pub get`, `flutter analyze`, `flut
 correctness (including several real mistakes caught and fixed during that review — e.g.
 `int.clamp()` returning `num`, not `int`, in `home_shell.dart`, and the two POS bugs described
 above), but that is not a substitute for the analyzer and test runner actually running. The
-widget screens (`PosHomeScreen`, `OrderBuilderScreen`, and everything under
-`lib/features/pos/widgets/`) are the highest-risk code in the app precisely because hand-review
-cannot simulate the widget tree, layout constraints, or `Tab`/`TabController` lifecycle the way
-`flutter run` or a widget test harness would — treat those as needing the most scrutiny on first
-real run. The test files under `test/core/auth/`, `test/core/money/`, and `test/features/pos/`
+widget screens (`PosHomeScreen`, `OrderBuilderScreen`, `TablesManagementScreen`, and everything
+under `lib/features/pos/widgets/`) are the highest-risk code in the app precisely because
+hand-review cannot simulate the widget tree, layout constraints, or `Tab`/`TabController`
+lifecycle the way `flutter run` or a widget test harness would — treat those as needing the most
+scrutiny on first real run. One specific thing to check first: `tables_management_screen.dart`
+uses `DropdownButtonFormField`'s `value:` parameter rather than the newer `initialValue:` name,
+because `pubspec.yaml`'s SDK floor (`>=3.22.0`, no upper bound) includes Flutter versions that
+predate the rename — `value:` should still work as a supported-but-deprecated alias on a newer
+SDK too, but that assumption about Flutter's own deprecation window is exactly the kind of thing
+this sandbox has no compiler to confirm. The test files under `test/core/auth/`,
+`test/core/money/`, and `test/features/pos/`
 (`jwt_decoder_test.dart`, `access_token_claims_test.dart`, `money_test.dart`, `pos_cart_test.dart`)
 have no platform-channel or rendering dependency — `pos_cart_test.dart` exercises
 `PosCartNotifier`'s state transitions and subtotal math directly, without touching any widget —
