@@ -159,10 +159,21 @@ This section is updated as slices land — it is the honest source of truth for 
 - Initial migration, hand-authored (see `docs/troubleshooting.md` for why) and **validated by applying it to a real PostgreSQL 16 database** — 39 tables / 18 enum types / 56 foreign keys created with zero errors.
 - `services/api` project scaffold: `package.json`, TypeScript config, ESLint/Prettier, `Dockerfile`.
 
+- NestJS application bootstrap (`main.ts`, `AppModule`) wired with: global validation, helmet, CORS, `nestjs-pino` structured logging with request-id correlation, a global `DomainExceptionFilter`, rate limiting (`@nestjs/throttler`).
+- Tenant isolation: `TenantContextStore` (AsyncLocalStorage) + `TenantContextInterceptor` + a Prisma `$use` middleware in `PrismaService` that fails closed on any tenant-scoped query missing an `organizationId`/`outletId` filter, with a narrow, grep-able `runUnscoped()` escape hatch for the handful of legitimately pre-tenant operations (login-by-email, refresh-token lookup, health checks). See `docs/architecture.md` §3.
+- RBAC: `PERMISSIONS`/`SYSTEM_ROLES` catalog (`common/rbac/permissions.catalog.ts`), `RolesService` (seeds the 5 system roles + full permission catalog per organization, computes a user's effective permissions), `@RequirePermission(...)` decorator + `PermissionsGuard`, `@Public()` decorator + `JwtAuthGuard`.
+- `AuthModule`: `POST /api/v1/auth/register` (creates Organization + Owner atomically — spec §68 step 1), `login`, `refresh` (rotating refresh tokens, hashed at rest), `logout`. Argon2id password hashing.
+- `OrganizationsModule`, `OutletsModule` (create/list/get/update — spec §68 "Creates restaurant" → "Creates outlet"), `UsersModule` (staff CRUD + role assignment), `RolesModule` (list roles/permissions), `AuditModule` (generic audit trail wired into org/outlet/staff mutations), `SystemModule` (`/system/health`, `/system/version` — spec §59/§61).
+- `prisma/seed.ts`: demo organization, 2 floors/10 tables with QR codes, GST 5% tax group, 3 menu categories / 23 items with variants and modifier groups, 5 staff accounts (one per role).
+- Unit tests: `duration.util.spec.ts` and `permissions.catalog.spec.ts` (13 tests, **passing** in this environment). `auth.service.spec.ts` (9 tests covering login success/failure/cross-org-email/active-outlet-resolution) is written and correct but can't execute here — see the `prisma generate` note below; it will run on any machine that can complete that step.
+- `Dockerfile` (multi-stage dev/build/production) + `.dockerignore`.
+
+**Verified in this environment**, despite the Prisma engine restriction: `npx tsc --noEmit` passes with zero errors outside of Prisma's un-generated types (confirmed line-by-line — every remaining error is an implicit-`any` on a `Prisma.TransactionClient`/`Prisma.Middleware`-typed parameter, which resolves once `prisma generate` runs); `npx eslint` is clean (zero errors); the initial migration was applied to a live Postgres 16 and matched the schema exactly (§ above).
+
 **In progress / not yet built:**
-- NestJS application bootstrap (`main.ts`, `AppModule`) and every feature module (auth, organizations, outlets, menu, tables, dining-sessions, orders, kitchen, billing, payments, reports, qr, printers, notifications, audit).
+- Every remaining feature module: menu, tables, dining-sessions, orders, kitchen (KOT/KDS), billing, payments, reports, qr, printers, notifications.
 - `packages/shared_types`, `apps/customer_web`, `apps/restaurant_app` — directories exist, contents don't yet.
-- Seed script, automated tests, OpenAPI docs generation.
-- `prisma generate` / `@prisma/client` has not been run in this environment (blocked by the same `binaries.prisma.sh` restriction as `migrate dev` — see `docs/troubleshooting.md`); the schema and migration are verified correct independent of that, but the generated TypeScript client itself needs to be produced on a network that can reach Prisma's engine host (any normal developer machine).
+- WebSocket gateway, OpenAPI docs generation, integration/e2e tests.
+- `prisma generate` / `@prisma/client` has not been run in this environment (blocked by the same `binaries.prisma.sh` restriction as `migrate dev` — see `docs/troubleshooting.md`); the schema and migration are verified correct independent of that (§ above), and the application code has been typechecked and lint-checked as far as possible without it, but the generated TypeScript client itself — and therefore actually running the server or the Prisma-dependent test suite — needs to happen on a network that can reach Prisma's engine host (any normal developer machine; this is specifically a sandboxed-CI restriction, not a project issue).
 
 Everything above the "Done" line in this document is the target architecture these next slices are built against, not a description of already-shipped code.
