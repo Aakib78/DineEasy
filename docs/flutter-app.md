@@ -193,12 +193,33 @@ Kitchen/KDS, Billing, Reports) builds on top of, not those features themselves:
   with the keyboard up, unlike the shorter two/three-field sheets in Tables management that the
   original `_SheetShell` was written for.
 
+- **Notifications inbox** (`lib/features/notifications/`): a bell icon with an unread-count
+  badge in the shell's `AppBar` (both the wide `NavigationRail` layout and the narrow
+  `NavigationBar` one — the wide layout didn't have an `AppBar` at all before this, so it
+  gained a minimal one just to host the bell), opening `NotificationsScreen` — an All/Unread
+  toggle over `GET /notifications`, tap-to-mark-read per row, and a "mark all read" action
+  (`PATCH /notifications/read-all`). Deliberately has no per-row navigation to the underlying
+  order — the backend gives enough (`entityType`/`entityId`) to add that later, but wiring an
+  actual jump-to-order flow is out of scope for "an inbox exists" and would be speculative
+  build-ahead. Unlike every other feature screen there's no RBAC gating anywhere in this
+  slice — it mirrors `NotificationsController`'s own "authenticated-only" contract on the
+  backend (see that file's doc comment), so the bell lives outside the permission-filtered
+  `_destinations` list in `home_shell.dart` rather than as a tab. No WebSocket wiring yet
+  (same gap as the Kitchen board), so `HomeShell` runs its own 20-second background poll of
+  the unread count for as long as the shell is mounted — longer-lived than `KdsScreen`'s 6s
+  poll, which only runs while that one screen is open, because an unread badge needs to stay
+  current everywhere, not just on one tab. New pure-logic tests:
+  `test/features/notifications/notification_models_test.dart` (4 tests — targeted vs. read
+  parsing, `isUnread` derivation, and the missing-field/unrecognized-type fallback path, since
+  `type` is deliberately a raw string rather than an enum — see the model's doc comment).
+
 **Not built yet**: offline/local-cache behavior (tracked with the LAN/offline backend slice —
-docs/offline-mode.md), push/local notifications, and the Windows/Android platform scaffolding
-itself (see below). Every permission-gated feature-area destination in the nav shell (POS,
-Tables, Kitchen, Billing, Reports, Staff) now has a real screen — only Settings remains a
-placeholder, and it's expected to stay minimal (spec has no dedicated settings-screen
-requirements beyond sign-out, already in the nav shell itself).
+docs/offline-mode.md), real OS-level push/local notifications (the in-app inbox above is the
+step before that — it's a poll-driven bell, not a system notification), and the
+Windows/Android platform scaffolding itself (see below). Every permission-gated feature-area
+destination in the nav shell (POS, Tables, Kitchen, Billing, Reports, Staff) now has a real
+screen — only Settings remains a placeholder, and it's expected to stay minimal (spec has no
+dedicated settings-screen requirements beyond sign-out, already in the nav shell itself).
 
 ## Why there's no `android/`, `ios/`, or `windows/` folder here
 

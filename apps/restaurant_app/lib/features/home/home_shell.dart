@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -6,6 +8,8 @@ import '../../core/auth/auth_session.dart';
 import '../../core/rbac/permissions.dart';
 import '../billing/billing_screen.dart';
 import '../kitchen/kds_screen.dart';
+import '../notifications/notifications_screen.dart';
+import '../notifications/state/notifications_providers.dart';
 import '../pos/pos_home_screen.dart';
 import '../reports/reports_screen.dart';
 import '../staff/staff_screen.dart';
@@ -91,6 +95,25 @@ class HomeShell extends ConsumerStatefulWidget {
 
 class _HomeShellState extends ConsumerState<HomeShell> {
   int _selectedIndex = 0;
+  Timer? _notificationPollTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    // Same interim-polling reasoning as `kds_screen.dart`'s ticket-board timer (see
+    // `unreadNotificationCountProvider`'s doc comment): no WebSocket wiring on the Flutter side
+    // yet, so the bell badge is kept current with a background poll for as long as the shell
+    // itself is alive, not just while the Notifications screen happens to be open.
+    _notificationPollTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      if (mounted) ref.invalidate(unreadNotificationCountProvider);
+    });
+  }
+
+  @override
+  void dispose() {
+    _notificationPollTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -120,6 +143,10 @@ class _HomeShellState extends ConsumerState<HomeShell> {
 
     if (isWide) {
       return Scaffold(
+        appBar: AppBar(
+          title: Text(visible.isEmpty ? 'DineEasy' : visible[selectedIndex].label),
+          actions: const [_NotificationBellButton()],
+        ),
         body: Row(
           children: [
             NavigationRail(
@@ -140,7 +167,10 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text(visible.isEmpty ? 'DineEasy' : visible[selectedIndex].label)),
+      appBar: AppBar(
+        title: Text(visible.isEmpty ? 'DineEasy' : visible[selectedIndex].label),
+        actions: const [_NotificationBellButton()],
+      ),
       drawer: Drawer(child: _UserBadge(user: user, expanded: true)),
       body: body,
       bottomNavigationBar: visible.isEmpty
@@ -153,6 +183,38 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                   NavigationDestination(icon: Icon(d.icon), label: d.label),
               ],
             ),
+    );
+  }
+}
+
+/// Lives in the shell's `AppBar` rather than as a nav destination — an inbox you glance at and
+/// dismiss, not a whole tab, and (per `NotificationsController`'s doc comment) it's the one
+/// piece of the app every signed-in staff member sees regardless of role, so it doesn't belong
+/// in the permission-filtered `_destinations` list above at all.
+class _NotificationBellButton extends ConsumerWidget {
+  const _NotificationBellButton();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final countAsync = ref.watch(unreadNotificationCountProvider);
+    final count = countAsync.asData?.value ?? 0;
+
+    return Badge(
+      label: Text('$count'),
+      isLabelVisible: count > 0,
+      child: IconButton(
+        tooltip: 'Notifications',
+        icon: const Icon(Icons.notifications_outlined),
+        onPressed: () async {
+          await Navigator.of(context).push<void>(
+            MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+          );
+          // The inbox screen marks things read on tap and via "mark all read" without this
+          // shell knowing when — re-check the badge the moment the user comes back to it
+          // rather than waiting for the next 20s poll tick.
+          ref.invalidate(unreadNotificationCountProvider);
+        },
+      ),
     );
   }
 }
