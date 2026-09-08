@@ -23,7 +23,7 @@ The cart itself lives client-side (in memory / `localStorage`) until "Place orde
 
 ## Multiple guests, one table
 
-Each browser tab that scans the table QR gets its own `guestToken` (random, generated client-side, sent with every order/cart write) but resolves to the *same* `DiningSession` (found by the find-or-create in step 3 above). The POS's table view groups orders by dining session and shows the per-guest breakdown using `guestToken`, so "Guest B added 2 more items" is visible without any of the guests needing to know about each other or log in. See `docs/architecture.md` §6.
+Each browser tab that scans the table QR gets its own `guestToken` — generated server-side by `QrService` on every `resolve` call and embedded in that tab's dining-session token — but resolves to the *same* `DiningSession` (found by the find-or-create in step 3 above). The POS's table view groups orders by dining session and shows the per-guest breakdown using `guestToken`, so "Guest B added 2 more items" is visible without any of the guests needing to know about each other or log in. See `docs/architecture.md` §6.
 
 ## Menu availability
 

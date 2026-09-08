@@ -19,6 +19,13 @@ import { OutletsModule } from './modules/outlets/outlets.module';
 import { UsersModule } from './modules/users/users.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { SystemModule } from './modules/system/system.module';
+import { GuestAuthModule } from './common/guest-auth/guest-auth.module';
+import { TaxModule } from './modules/tax/tax.module';
+import { ModifiersModule } from './modules/modifiers/modifiers.module';
+import { MenuModule } from './modules/menu/menu.module';
+import { TablesModule } from './modules/tables/tables.module';
+import { DiningSessionsModule } from './modules/dining-sessions/dining-sessions.module';
+import { QrModule } from './modules/qr/qr.module';
 
 @Module({
   imports: [
@@ -47,8 +54,15 @@ import { SystemModule } from './modules/system/system.module';
     UsersModule,
     AuditModule,
     SystemModule,
-    // Menu, Tables, DiningSessions, QR, Orders, Kitchen, Billing, Payments, Printers,
-    // Reports, Notifications modules land in subsequent slices — see docs/architecture.md §15.
+    GuestAuthModule,
+    TaxModule,
+    ModifiersModule,
+    MenuModule,
+    TablesModule,
+    DiningSessionsModule,
+    QrModule,
+    // Orders, Kitchen, Billing, Payments, Printers, Reports, Notifications modules land in
+    // subsequent slices — see docs/architecture.md §15.
   ],
   providers: [
     // Guard order matters: JwtAuthGuard runs first (populates request.user or allows
