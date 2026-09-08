@@ -213,6 +213,18 @@ Kitchen/KDS, Billing, Reports) builds on top of, not those features themselves:
   parsing, `isUnread` derivation, and the missing-field/unrecognized-type fallback path, since
   `type` is deliberately a raw string rather than an enum — see the model's doc comment).
 
+- **Staff role-assignment removal**: closes the gap the Staff management bullet above left open
+  — the data model always allowed multiple simultaneous role assignments per staff member, but
+  there was no way to *remove* one, only add or replace-for-the-same-outlet. `_StaffTile`'s role
+  chips (the list view, not the edit sheet's read-only snapshot copy — see that sheet's own new
+  doc comment on why removal isn't duplicated there) now use `Chip.onDeleted` to show a delete
+  icon, gated on `staff.manage` and further hidden per-chip whenever it's a member's only
+  remaining role — mirroring the new backend guard (`DELETE /staff/:id/roles` refuses to leave
+  someone with zero role assignments) client-side rather than always round-tripping to find out.
+  Deleting one goes through a confirmation `AlertDialog` first — this app's first use of
+  `showDialog` anywhere, since every earlier destructive-ish action was a full form submission
+  rather than a single tap. `StaffRepository.removeRoleAssignment` added alongside.
+
 **Not built yet**: offline/local-cache behavior (tracked with the LAN/offline backend slice —
 docs/offline-mode.md), real OS-level push/local notifications (the in-app inbox above is the
 step before that — it's a poll-driven bell, not a system notification), and the

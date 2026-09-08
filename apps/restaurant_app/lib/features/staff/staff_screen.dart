@@ -88,6 +88,9 @@ class StaffScreen extends ConsumerWidget {
                     onTap: canManage
                         ? () => _showEditStaffSheet(context, staff[index], roles, outlets)
                         : null,
+                    onRemoveRole: canManage
+                        ? (role) => _removeRole(context, ref, staff[index], role)
+                        : null,
                   ),
                 );
               },
@@ -115,6 +118,48 @@ class StaffScreen extends ConsumerWidget {
     );
   }
 
+  /// Confirms, then calls `DELETE /staff/:id/roles`. The confirmation dialog is the only place
+  /// in this app that uses `showDialog`/`AlertDialog` — every other destructive-ish action
+  /// (status changes, reassignment) is a full form submission, not a single tap, so it didn't
+  /// need one; removing one chip out from under someone is exactly the kind of one-tap action
+  /// that does.
+  Future<void> _removeRole(
+    BuildContext context,
+    WidgetRef ref,
+    StaffMember member,
+    StaffRoleAssignment role,
+  ) async {
+    final outletLabel = role.outletName ?? 'All outlets';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Remove role assignment?'),
+        content: Text('${member.name} will no longer be ${role.roleName} · $outletLabel.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.tonal(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      await ref
+          .read(staffRepositoryProvider)
+          .removeRoleAssignment(member.id, outletId: role.outletId);
+      ref.invalidate(staffListProvider);
+    } on ApiException catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
   void _showEditStaffSheet(
     BuildContext context,
     StaffMember member,
@@ -130,12 +175,18 @@ class StaffScreen extends ConsumerWidget {
 }
 
 class _StaffTile extends StatelessWidget {
-  const _StaffTile({required this.member, required this.onTap});
+  const _StaffTile({required this.member, required this.onTap, required this.onRemoveRole});
 
   final StaffMember member;
 
   /// Null for a view-only user — see `canManage` in `StaffScreen.build`.
   final VoidCallback? onTap;
+
+  /// Null for a view-only user, same as [onTap]. Per-chip, the delete affordance is further
+  /// hidden whenever it's this member's *only* role assignment — mirrors the backend's own
+  /// refusal (`UsersService.removeRoleAssignment`'s doc comment) rather than letting the tap
+  /// round-trip to a 400 for a case this screen can already rule out locally.
+  final void Function(StaffRoleAssignment role)? onRemoveRole;
 
   @override
   Widget build(BuildContext context) {
@@ -169,6 +220,10 @@ class _StaffTile extends StatelessWidget {
                           ),
                           visualDensity: VisualDensity.compact,
                           materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          onDeleted: onRemoveRole == null || member.roles.length <= 1
+                              ? null
+                              : () => onRemoveRole!(role),
+                          deleteIconColor: Theme.of(context).colorScheme.error,
                         ),
                     ],
             ),
@@ -498,6 +553,10 @@ class _EditStaffSheetState extends ConsumerState<_EditStaffSheet> {
         const Divider(),
         Text('Current roles', style: Theme.of(context).textTheme.titleSmall),
         const SizedBox(height: 8),
+        // Read-only here, deliberately — `widget.member` is a snapshot from when this sheet was
+        // opened, so removing a role here would either desync from the live list underneath it
+        // or need its own local-copy bookkeeping. Removal lives on `_StaffTile`'s chips instead
+        // (the list is what's always current); this view is for reassignment, not removal.
         Wrap(
           spacing: 6,
           runSpacing: 4,

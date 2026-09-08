@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateStaffDto } from './dto/create-staff.dto';
 import { UpdateStaffDto } from './dto/update-staff.dto';
@@ -37,5 +37,21 @@ export class UsersController {
     @Body() dto: UpdateStaffDto,
   ) {
     return this.usersService.update(user.organizationId, id, dto, user.userId);
+  }
+
+  /**
+   * `outletId` omitted means the org-wide assignment (mirrors `UpdateStaffDto`'s own
+   * `roleName`/`outletId` pairing — see `UsersService.update`'s doc comment) rather than a path
+   * segment, since `undefined` cleanly means "the org-wide row" the same way it does on every
+   * other role-assignment endpoint here.
+   */
+  @Delete(':id/roles')
+  @RequirePermission(PERMISSIONS.STAFF_MANAGE)
+  removeRole(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Query('outletId') outletId?: string,
+  ) {
+    return this.usersService.removeRoleAssignment(user.organizationId, id, outletId, user.userId);
   }
 }

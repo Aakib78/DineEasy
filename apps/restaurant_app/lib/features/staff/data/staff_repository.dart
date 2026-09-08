@@ -80,4 +80,20 @@ class StaffRepository {
       throw ApiException.fromDioException(e);
     }
   }
+
+  /// Removes exactly one role assignment — `outletId` omitted targets the org-wide one, the
+  /// same convention `updateStaff`'s `roleName`/`outletId` pairing uses. The backend refuses
+  /// (400) to remove a staff member's *only* remaining assignment; callers should check
+  /// `StaffMember.roles.length > 1` before offering this at all rather than relying solely on
+  /// that round trip — see `_StaffTile`'s doc comment in `staff_screen.dart`.
+  Future<void> removeRoleAssignment(String staffId, {String? outletId}) async {
+    try {
+      await _apiClient.dio.delete<void>(
+        '/staff/$staffId/roles',
+        queryParameters: outletId != null ? {'outletId': outletId} : null,
+      );
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
 }

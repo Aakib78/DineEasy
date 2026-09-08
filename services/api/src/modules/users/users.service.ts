@@ -119,6 +119,54 @@ export class UsersService {
 
     return after;
   }
+
+  /**
+   * Removes exactly one `UserRole` row — the one matching `(userId, outletId)`, same targeting
+   * as `update`'s own delete-and-recreate. Refuses to remove a staff member's *only* remaining
+   * role assignment: with zero rows left, `AccessTokenPayload.permissions` would resolve to an
+   * empty set (see `AuthService.resolveActiveOutlet`/token issuance) and the account would be
+   * effectively locked out with no in-app way to recover short of another Owner reassigning
+   * them, which is worse than just refusing the removal up front and telling the caller to
+   * assign a replacement role first (or deactivate the account instead, via `status`, if the
+   * real intent is "this person shouldn't have access at all").
+   */
+  async removeRoleAssignment(
+    organizationId: string,
+    userId: string,
+    outletId: string | undefined,
+    actorUserId: string,
+  ) {
+    const before = await this.getById(organizationId, userId);
+
+    if (before.roles.length <= 1) {
+      throw new ValidationDomainError(
+        "Cannot remove a staff member's only role assignment — they would be left with no " +
+          'access. Assign a replacement role first, or set their status to inactive instead.',
+      );
+    }
+
+    const result = await this.prisma.userRole.deleteMany({
+      where: { userId, outletId: outletId ?? null },
+    });
+    if (result.count === 0) {
+      throw new NotFoundDomainError('Role assignment', `${userId}:${outletId ?? 'org-wide'}`);
+    }
+
+    const after = await this.getById(organizationId, userId);
+
+    await this.auditLog.record({
+      organizationId,
+      outletId,
+      actorUserId,
+      action: 'staff.role_removed',
+      entityType: 'User',
+      entityId: userId,
+      previousState: before,
+      newState: after,
+    });
+
+    return after;
+  }
 }
 
 function stripPasswordHash<T extends { passwordHash?: string }>(user: T): Omit<T, 'passwordHash'> {
