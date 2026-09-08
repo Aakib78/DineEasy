@@ -1,11 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import Decimal from 'decimal.js';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { NotFoundDomainError, ValidationDomainError } from '../../common/errors/domain-errors';
 import { AuditLogService } from '../audit/audit-log.service';
 import { DailyCounterService } from '../../common/counters/daily-counter.service';
 import { OrdersService } from '../orders/orders.service';
 import { PrintersService } from '../printers/printers.service';
+import { computeInvoiceTaxBreakdown, InvoiceTaxableLine } from './invoice-tax.util';
 
 /**
  * Billing (spec §9/§16): turns a SERVED order into an immutable Invoice with a GST-compliant
@@ -51,29 +51,26 @@ export class BillingService {
     const invoice = await this.prisma.$transaction(async (tx) => {
       const invoiceNumber = await this.dailyCounter.next(tx, outletId, 'INVOICE');
 
-      const taxByType = new Map<
-        string,
-        { ratePercent: Decimal; taxableAmount: Decimal; taxAmount: Decimal }
-      >();
+      // Fetching each line's current tax-group components needs a live Prisma client, so it
+      // stays here; the decimal aggregation math that used to live inline in this loop is now
+      // `computeInvoiceTaxBreakdown` (see its doc comment) so it can actually be unit tested.
+      const taxableLines: InvoiceTaxableLine[] = [];
       for (const item of activeItems) {
         const menuItem = await tx.menuItem.findFirst({
           where: { id: item.menuItemId },
           include: { taxGroup: { include: { components: true } } },
         });
-        const subtotal = new Decimal(item.subtotal.toString());
-        for (const c of menuItem?.taxGroup?.components ?? []) {
-          const ratePercent = new Decimal(c.ratePercent.toString());
-          const taxAmount = subtotal.times(ratePercent).dividedBy(100).toDecimalPlaces(2);
-          const bucket = taxByType.get(c.taxType) ?? {
-            ratePercent,
-            taxableAmount: new Decimal(0),
-            taxAmount: new Decimal(0),
-          };
-          bucket.taxableAmount = bucket.taxableAmount.plus(subtotal);
-          bucket.taxAmount = bucket.taxAmount.plus(taxAmount);
-          taxByType.set(c.taxType, bucket);
-        }
+        taxableLines.push({
+          subtotal: item.subtotal.toString(),
+          taxComponents: (menuItem?.taxGroup?.components ?? []).map(
+            (c: { taxType: string; ratePercent: { toString(): string } }) => ({
+              taxType: c.taxType,
+              ratePercent: c.ratePercent.toString(),
+            }),
+          ),
+        });
       }
+      const taxBreakdown = computeInvoiceTaxBreakdown(taxableLines);
 
       const created = await tx.invoice.create({
         data: {
@@ -105,14 +102,14 @@ export class BillingService {
         })),
       });
 
-      if (taxByType.size > 0) {
+      if (taxBreakdown.length > 0) {
         await tx.invoiceTax.createMany({
-          data: Array.from(taxByType.entries()).map(([taxType, v]) => ({
+          data: taxBreakdown.map((t) => ({
             invoiceId: created.id,
-            taxType,
-            ratePercent: v.ratePercent.toString(),
-            taxableAmount: v.taxableAmount.toDecimalPlaces(2).toString(),
-            taxAmount: v.taxAmount.toDecimalPlaces(2).toString(),
+            taxType: t.taxType,
+            ratePercent: t.ratePercent,
+            taxableAmount: t.taxableAmount,
+            taxAmount: t.taxAmount,
           })),
         });
       }
