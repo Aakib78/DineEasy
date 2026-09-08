@@ -103,8 +103,42 @@ Kitchen/KDS, Billing, Reports) builds on top of, not those features themselves:
   `test/features/kitchen/kds_models_test.dart` (9 tests — JSON parsing, `hasActiveItems`, and the
   `kitchenItemStatusToJson` guard against NEW as an illegal target status).
 
-**Not built yet**: Billing, Reports, Staff management, offline/local-cache behavior (tracked with
-the LAN/offline backend slice — docs/offline-mode.md), push/local notifications, and the
+- **Billing** (`lib/features/billing/`) — `BillingScreen` lists orders ready to bill (SERVED) or
+  already billed and awaiting payment (BILLED/PAID), reusing `activeOrdersProvider` and
+  filtering client-side rather than adding a dedicated backend endpoint (`GET /orders` already
+  excludes COMPLETED/CANCELLED/REFUNDED). Tapping one opens `BillingDetailScreen`: an item
+  breakdown with subtotal/discount/tax/service-charge/total, a "Generate bill" action
+  (`POST /orders/:id/invoice`, idempotent on the backend) once SERVED, then a GST tax-line
+  breakdown (`_InvoiceCard`, from `GET /orders/:id/invoice`) plus a payment form
+  (`POST /orders/:id/payments`) once BILLED — split/partial payments are supported (the backend
+  only advances the order past BILLED once the running SUCCEEDED total covers the full amount),
+  so the payment amount field defaults to the *remaining* balance, not the order total, and
+  re-syncs to a new remaining balance after each partial payment rather than going stale
+  (`_RecordPaymentCard`'s `didUpdateWidget`). This screen never sets order/payment status
+  directly — the backend derives PAID → COMPLETED automatically once fully paid
+  (`PaymentsService.settleOrder`), and the screen just reflects whatever `orderByIdProvider`
+  returns after each action. Generate-bill and record-payment controls are further gated on
+  `billing.create`/`payments.take` respectively (the tab itself only needs `billing.view`).
+  Extended the shared `Order` model (`pos_models.dart`) with `subtotal`/`discountTotal`/
+  `taxTotal`/`serviceChargeTotal`/`tableName`/`payments` — all present on every order response
+  already (`ORDER_INCLUDE` on the backend), just not previously parsed since nothing needed them
+  yet. Also added `Money.operator-` and `Money.toPlainString()` (for prefilling the editable
+  amount field) to `lib/core/money/money.dart`. New pure-logic tests:
+  `test/features/billing/billing_models_test.dart` (3 tests) plus 4 new `money_test.dart` cases
+  covering subtraction and `toPlainString`.
+
+  **A real bug caught during hand-review of this slice**: the amount field's input formatter
+  originally used `FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}$'))` to cap it at
+  two decimal places. That pattern is anchored (`^...$`), and `FilteringTextInputFormatter.allow`
+  works by keeping only the *substrings* of the new text that match the pattern — for an
+  anchored pattern, a string either matches in full or matches nowhere at all, so one keystroke
+  past two decimal places wouldn't just get rejected, it would wipe the *entire* field to empty.
+  Fixed with `TextInputFormatter.withFunction`, which reverts to the previous value on a
+  non-match instead of stripping non-matching substrings — the correct tool for a
+  whole-string-shaped validation pattern.
+
+**Not built yet**: Reports, Staff management, offline/local-cache behavior (tracked with the
+LAN/offline backend slice — docs/offline-mode.md), push/local notifications, and the
 Windows/Android platform scaffolding itself (see below).
 
 ## Why there's no `android/`, `ios/`, or `windows/` folder here
@@ -137,22 +171,27 @@ success). Concretely, nobody has run `flutter pub get`, `flutter analyze`, `flut
 correctness (including several real mistakes caught and fixed during that review — e.g.
 `int.clamp()` returning `num`, not `int`, in `home_shell.dart`, and the two POS bugs described
 above), but that is not a substitute for the analyzer and test runner actually running. The
-widget screens (`PosHomeScreen`, `OrderBuilderScreen`, `TablesManagementScreen`, `KdsScreen`, and
-everything under `lib/features/pos/widgets/`) are the highest-risk code in the app precisely because
-hand-review cannot simulate the widget tree, layout constraints, or `Tab`/`TabController`
-lifecycle the way `flutter run` or a widget test harness would — treat those as needing the most
-scrutiny on first real run. One specific thing to check first: `tables_management_screen.dart`
-uses `DropdownButtonFormField`'s `value:` parameter rather than the newer `initialValue:` name,
-because `pubspec.yaml`'s SDK floor (`>=3.22.0`, no upper bound) includes Flutter versions that
-predate the rename — `value:` should still work as a supported-but-deprecated alias on a newer
-SDK too, but that assumption about Flutter's own deprecation window is exactly the kind of thing
-this sandbox has no compiler to confirm. The test files under `test/core/auth/`,
-`test/core/money/`, and `test/features/` (`jwt_decoder_test.dart`, `access_token_claims_test.dart`,
-`money_test.dart`, `pos_cart_test.dart`, `kds_models_test.dart`) have no platform-channel or
-rendering dependency — `pos_cart_test.dart` exercises `PosCartNotifier`'s state transitions and
-subtotal math directly, `kds_models_test.dart` exercises `KdsTicket`/`KdsTicketItem` JSON parsing
-and the active-ticket filter, neither touching a widget — and should be the first thing to run
-once the SDK is available:
+widget screens (`PosHomeScreen`, `OrderBuilderScreen`, `TablesManagementScreen`, `KdsScreen`,
+`BillingScreen`/`BillingDetailScreen`, and everything under `lib/features/pos/widgets/`) are the
+highest-risk code in the app precisely because hand-review cannot simulate the widget tree,
+layout constraints, or `Tab`/`TabController`/`SegmentedButton` lifecycle the way `flutter run` or
+a widget test harness would — treat those as needing the most scrutiny on first real run. Two
+specific things to check first: `tables_management_screen.dart` uses `DropdownButtonFormField`'s
+`value:` parameter rather than the newer `initialValue:` name, because `pubspec.yaml`'s SDK floor
+(`>=3.22.0`, no upper bound) includes Flutter versions that predate the rename — `value:` should
+still work as a supported-but-deprecated alias on a newer SDK too, but that assumption about
+Flutter's own deprecation window is exactly the kind of thing this sandbox has no compiler to
+confirm; and `billing_detail_screen.dart`'s `_RecordPaymentCard` relies on `didUpdateWidget`
+re-syncing a `TextEditingController` after a partial payment (see the Billing section above) —
+worth specifically exercising a split-payment flow on first real run, since that's exactly the
+kind of stateful-widget-lifecycle interaction hand-review is least reliable at. The test files
+under `test/core/auth/`, `test/core/money/`, and `test/features/` (`jwt_decoder_test.dart`,
+`access_token_claims_test.dart`, `money_test.dart`, `pos_cart_test.dart`, `kds_models_test.dart`,
+`billing_models_test.dart`) have no platform-channel or rendering dependency — `pos_cart_test.dart`
+exercises `PosCartNotifier`'s state transitions and subtotal math directly, `kds_models_test.dart`
+exercises `KdsTicket`/`KdsTicketItem` JSON parsing and the active-ticket filter,
+`billing_models_test.dart` exercises `Invoice` JSON parsing, none touching a widget — and should
+be the first thing to run once the SDK is available:
 
 ```bash
 cd apps/restaurant_app

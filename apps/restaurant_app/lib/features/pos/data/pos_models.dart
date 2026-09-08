@@ -301,6 +301,49 @@ class OrderItemSummary {
   final List<OrderItemModifierSummary> modifiers;
 }
 
+enum PaymentMethod { cash, upi, card, other }
+
+PaymentMethod _paymentMethodFromJson(String value) => switch (value) {
+  'CASH' => PaymentMethod.cash,
+  'UPI' => PaymentMethod.upi,
+  'CARD' => PaymentMethod.card,
+  _ => PaymentMethod.other,
+};
+
+/// For `POST /orders/:orderId/payments` — see `RecordPaymentDto` on the backend
+/// (`@IsIn(['CASH', 'UPI', 'CARD', 'OTHER'])`).
+String paymentMethodToJson(PaymentMethod method) => switch (method) {
+  PaymentMethod.cash => 'CASH',
+  PaymentMethod.upi => 'UPI',
+  PaymentMethod.card => 'CARD',
+  PaymentMethod.other => 'OTHER',
+};
+
+/// Only `SUCCEEDED` payments count toward "how much of this order has been paid" — see
+/// `PaymentsService.sumSucceeded` on the backend, which this mirrors for the same "remaining
+/// balance" display in `lib/features/billing/`. v1's `ManualPaymentProvider` always creates a
+/// payment already `SUCCEEDED` (staff-confirmed at the counter, no pending/async settlement —
+/// see PaymentsService's class doc comment), so `PENDING`/`FAILED` are realistically only seen
+/// if a future real payment gateway is wired up; a client-gone-stale on the same order (POS +
+/// Billing open on two terminals) is the only v1 case a non-SUCCEEDED status shows up here.
+class PaymentSummary {
+  const PaymentSummary({required this.id, required this.method, required this.status, required this.amount});
+
+  factory PaymentSummary.fromJson(Map<String, dynamic> json) => PaymentSummary(
+    id: json['id'] as String,
+    method: _paymentMethodFromJson(json['method'] as String? ?? 'OTHER'),
+    status: json['status'] as String? ?? 'PENDING',
+    amount: json['amount'].toString(),
+  );
+
+  final String id;
+  final PaymentMethod method;
+  final String status;
+  final String amount;
+
+  bool get isSucceeded => status == 'SUCCEEDED';
+}
+
 class Order {
   const Order({
     required this.id,
@@ -308,27 +351,53 @@ class Order {
     required this.status,
     required this.type,
     required this.tableId,
+    required this.tableName,
+    required this.subtotal,
+    required this.discountTotal,
+    required this.taxTotal,
+    required this.serviceChargeTotal,
     required this.total,
     required this.items,
+    required this.payments,
   });
 
-  factory Order.fromJson(Map<String, dynamic> json) => Order(
-    id: json['id'] as String,
-    orderNumber: json['orderNumber'] as String,
-    status: _orderStatusFromJson(json['status'] as String? ?? 'DRAFT'),
-    type: json['type'] as String? ?? 'DINE_IN',
-    tableId: json['tableId'] as String?,
-    total: json['total'].toString(),
-    items: (json['items'] as List<dynamic>? ?? const [])
-        .map((i) => OrderItemSummary.fromJson(i as Map<String, dynamic>))
-        .toList(),
-  );
+  factory Order.fromJson(Map<String, dynamic> json) {
+    final table = json['table'] as Map<String, dynamic>?;
+    return Order(
+      id: json['id'] as String,
+      orderNumber: json['orderNumber'] as String,
+      status: _orderStatusFromJson(json['status'] as String? ?? 'DRAFT'),
+      type: json['type'] as String? ?? 'DINE_IN',
+      tableId: json['tableId'] as String?,
+      tableName: table?['name'] as String?,
+      subtotal: (json['subtotal'] ?? 0).toString(),
+      discountTotal: (json['discountTotal'] ?? 0).toString(),
+      taxTotal: (json['taxTotal'] ?? 0).toString(),
+      serviceChargeTotal: (json['serviceChargeTotal'] ?? 0).toString(),
+      total: json['total'].toString(),
+      items: (json['items'] as List<dynamic>? ?? const [])
+          .map((i) => OrderItemSummary.fromJson(i as Map<String, dynamic>))
+          .toList(),
+      // `payments` is only present on GET /orders and GET /orders/:id (ORDER_INCLUDE on the
+      // backend) — every call site in this app goes through one of those, so this never needs
+      // a "not fetched yet" tri-state, just "no payments recorded yet" when the list is empty.
+      payments: (json['payments'] as List<dynamic>? ?? const [])
+          .map((p) => PaymentSummary.fromJson(p as Map<String, dynamic>))
+          .toList(),
+    );
+  }
 
   final String id;
   final String orderNumber;
   final OrderStatus status;
   final String type;
   final String? tableId;
+  final String? tableName;
+  final String subtotal;
+  final String discountTotal;
+  final String taxTotal;
+  final String serviceChargeTotal;
   final String total;
   final List<OrderItemSummary> items;
+  final List<PaymentSummary> payments;
 }

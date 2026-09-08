@@ -25,6 +25,11 @@ class Money implements Comparable<Money> {
 
   Money operator +(Money other) => Money._(_paise + other._paise);
 
+  /// Can go negative (e.g. a stale "remaining balance" computed against an order total that
+  /// changed underneath it) — callers that display a balance should clamp with `Money.zero` on
+  /// the way in, not assume this always returns a sane non-negative amount.
+  Money operator -(Money other) => Money._(_paise - other._paise);
+
   Money times(int quantity) => Money._(_paise * quantity);
 
   @override
@@ -50,5 +55,17 @@ class Money implements Comparable<Money> {
     final whole = absPaise ~/ 100;
     final fraction = (absPaise % 100).toString().padLeft(2, '0');
     return '$sign₹$whole.$fraction';
+  }
+
+  /// Same as `format()` without the `₹` prefix or any grouping — e.g. `"245.00"`. For
+  /// prefilling an *editable* amount field (see `lib/features/billing/`'s payment form), where
+  /// a currency symbol baked into the text would just have to be stripped back out before the
+  /// value could be parsed as a number again.
+  String toPlainString() {
+    final sign = _paise < 0 ? '-' : '';
+    final absPaise = _paise.abs();
+    final whole = absPaise ~/ 100;
+    final fraction = (absPaise % 100).toString().padLeft(2, '0');
+    return '$sign$whole.$fraction';
   }
 }

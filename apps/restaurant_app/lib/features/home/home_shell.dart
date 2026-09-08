@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/auth/access_token_claims.dart';
 import '../../core/auth/auth_session.dart';
 import '../../core/rbac/permissions.dart';
+import '../billing/billing_screen.dart';
 import '../kitchen/kds_screen.dart';
 import '../pos/pos_home_screen.dart';
 import '../tables/tables_management_screen.dart';
@@ -52,7 +53,7 @@ final _destinations = <_Destination>[
     label: 'Billing',
     icon: Icons.receipt_long,
     requiredPermission: Permissions.billingView,
-    screen: PlaceholderScreen(title: 'Billing', icon: Icons.receipt_long),
+    screen: BillingScreen(),
   ),
   const _Destination(
     label: 'Reports',

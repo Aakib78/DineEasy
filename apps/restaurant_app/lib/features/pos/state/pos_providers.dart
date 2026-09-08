@@ -35,7 +35,16 @@ final floorsProvider = FutureProvider.autoDispose<List<Floor>>((ref) {
 });
 
 /// Active orders for the outlet — used by the table grid to show "this table already has an
-/// open order" instead of blindly offering to start a duplicate one (see OrderEntryScreen).
+/// open order" instead of blindly offering to start a duplicate one (see OrderEntryScreen), and
+/// by the Billing screen (`lib/features/billing/`) to find orders ready to bill/collect payment.
 final activeOrdersProvider = FutureProvider.autoDispose<List<Order>>((ref) {
   return ref.watch(ordersRepositoryProvider).listActive();
+});
+
+/// A single order, fetched fresh — used by `BillingDetailScreen` rather than trusting whatever
+/// snapshot `activeOrdersProvider`'s list happened to hold when the user tapped into it, since
+/// billing/payment actions need the order's *current* status and payment total, not a possibly
+/// several-seconds-stale one.
+final orderByIdProvider = FutureProvider.autoDispose.family<Order, String>((ref, orderId) {
+  return ref.watch(ordersRepositoryProvider).getById(orderId);
 });
