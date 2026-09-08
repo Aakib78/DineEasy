@@ -31,6 +31,9 @@ import { OrdersModule } from './modules/orders/orders.module';
 import { KitchenModule } from './modules/kitchen/kitchen.module';
 import { BillingModule } from './modules/billing/billing.module';
 import { PaymentsModule } from './modules/payments/payments.module';
+import { RealtimeModule } from './common/realtime/realtime.module';
+import { PrintersModule } from './modules/printers/printers.module';
+import { ReportsModule } from './modules/reports/reports.module';
 
 @Module({
   imports: [
@@ -60,6 +63,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
     AuditModule,
     SystemModule,
     GuestAuthModule,
+    RealtimeModule,
     TaxModule,
     ModifiersModule,
     MenuModule,
@@ -71,8 +75,9 @@ import { PaymentsModule } from './modules/payments/payments.module';
     KitchenModule,
     BillingModule,
     PaymentsModule,
-    // Printers, Reports, Notifications modules land in subsequent slices — see
-    // docs/architecture.md §15.
+    PrintersModule,
+    ReportsModule,
+    // Notifications land in a subsequent slice — see docs/architecture.md §15.
   ],
   providers: [
     // Guard order matters: JwtAuthGuard runs first (populates request.user or allows

@@ -46,7 +46,12 @@ export class OutletsService {
   async update(organizationId: string, id: string, dto: UpdateOutletDto, actorUserId: string) {
     const before = await this.getById(organizationId, id);
 
-    const updated = await this.prisma.outlet.update({ where: { id: before.id }, data: dto });
+    // Outlet is org-scoped, so a bare `update()` (which only accepts a @unique/@id `where`)
+    // is refused by PrismaService's tenant guard — see prisma.service.ts's
+    // SINGLE_RECORD_ACTIONS comment. `updateMany` with an explicit organizationId filter is
+    // the tenant-safe equivalent for single-record writes on scoped models.
+    await this.prisma.outlet.updateMany({ where: { id, organizationId }, data: dto });
+    const updated = await this.getById(organizationId, id);
 
     await this.auditLog.record({
       organizationId,

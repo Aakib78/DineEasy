@@ -5,6 +5,7 @@ import { NotFoundDomainError, ValidationDomainError } from '../../common/errors/
 import { AuditLogService } from '../audit/audit-log.service';
 import { DailyCounterService } from '../../common/counters/daily-counter.service';
 import { OrdersService } from '../orders/orders.service';
+import { PrintersService } from '../printers/printers.service';
 
 /**
  * Billing (spec §9/§16): turns a SERVED order into an immutable Invoice with a GST-compliant
@@ -25,6 +26,7 @@ export class BillingService {
     private readonly auditLog: AuditLogService,
     private readonly dailyCounter: DailyCounterService,
     private readonly ordersService: OrdersService,
+    private readonly printersService: PrintersService,
   ) {}
 
   async generateInvoice(
@@ -136,7 +138,25 @@ export class BillingService {
       newState: { invoiceNumber: invoice.invoiceNumber, total: invoice.total.toString() },
     });
 
-    return this.getById(organizationId, invoice.id);
+    const result = await this.getById(organizationId, invoice.id);
+    await this.printersService.enqueueForType(outletId, 'RECEIPT', {
+      invoiceNumber: result.invoiceNumber,
+      orderNumber: order.orderNumber,
+      items: result.items.map((i) => ({
+        description: i.description,
+        quantity: i.quantity,
+        total: i.total.toString(),
+      })),
+      subtotal: result.subtotal.toString(),
+      taxes: result.taxes.map((t) => ({
+        taxType: t.taxType,
+        ratePercent: t.ratePercent.toString(),
+        taxAmount: t.taxAmount.toString(),
+      })),
+      total: result.total.toString(),
+    });
+
+    return result;
   }
 
   async getById(organizationId: string, id: string) {

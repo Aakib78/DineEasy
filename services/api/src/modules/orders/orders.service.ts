@@ -7,6 +7,8 @@ import { AuditLogService } from '../audit/audit-log.service';
 import { DailyCounterService } from '../../common/counters/daily-counter.service';
 import { TablesService } from '../tables/tables.service';
 import { DiningSessionsService } from '../dining-sessions/dining-sessions.service';
+import { RealtimeGateway } from '../../common/realtime/realtime.gateway';
+import { PrintersService } from '../printers/printers.service';
 import { OrderStatus, assertOrderTransition } from '../../common/order/order-state-machine';
 import { CreateOrderDto, CreateOrderItemDto } from './dto/create-order.dto';
 import { AddOrderItemsDto } from './dto/add-order-items.dto';
@@ -47,6 +49,8 @@ export class OrdersService {
     private readonly dailyCounter: DailyCounterService,
     private readonly tablesService: TablesService,
     private readonly diningSessionsService: DiningSessionsService,
+    private readonly realtime: RealtimeGateway,
+    private readonly printersService: PrintersService,
   ) {}
 
   // ---------------------------------------------------------------------
@@ -82,6 +86,8 @@ export class OrdersService {
         diningSessionId = session.id;
       }
     }
+
+    let kotNumber: string | undefined;
 
     const order = await this.prisma.$transaction(async (tx) => {
       const outlet = await tx.outlet.findFirst({ where: { id: outletId, organizationId } });
@@ -134,7 +140,15 @@ export class OrdersService {
         },
       });
 
-      await this.createKitchenOrder(tx, organizationId, outletId, created.id, createdItems, false);
+      const kitchenOrder = await this.createKitchenOrder(
+        tx,
+        organizationId,
+        outletId,
+        created.id,
+        createdItems,
+        false,
+      );
+      kotNumber = kitchenOrder?.kotNumber;
 
       return created;
     });
@@ -148,6 +162,24 @@ export class OrdersService {
       entityId: order.id,
       newState: { orderNumber: order.orderNumber, source, total: order.total.toString() },
     });
+
+    this.realtime.orderUpdated(outletId, order.id, order.diningSessionId);
+    this.realtime.kitchenQueueUpdated(outletId);
+
+    if (kotNumber) {
+      const printed = await this.getById(organizationId, outletId, order.id);
+      await this.printersService.enqueueForType(outletId, 'KITCHEN', {
+        kotNumber,
+        orderNumber: order.orderNumber,
+        tableName: printed.table?.name,
+        isModification: false,
+        items: printed.items.map((i) => ({
+          name: i.nameSnapshot,
+          quantity: i.quantity,
+          notes: i.notes,
+        })),
+      });
+    }
 
     return this.getById(organizationId, outletId, order.id);
   }
@@ -166,10 +198,22 @@ export class OrdersService {
       );
     }
 
+    let kotNumber: string | undefined;
+    let addedItemIds: string[] = [];
+
     await this.prisma.$transaction(async (tx) => {
       const prepared = await this.priceItems(tx, outletId, dto.items);
       const createdItems = await this.persistOrderItems(tx, orderId, prepared);
-      await this.createKitchenOrder(tx, organizationId, outletId, orderId, createdItems, true);
+      addedItemIds = createdItems.map((i) => i.id);
+      const kitchenOrder = await this.createKitchenOrder(
+        tx,
+        organizationId,
+        outletId,
+        orderId,
+        createdItems,
+        true,
+      );
+      kotNumber = kitchenOrder?.kotNumber;
       await this.recalcTotals(tx, organizationId, outletId, orderId);
     });
 
@@ -196,6 +240,25 @@ export class OrdersService {
         actor.userId,
         'SYSTEM',
       );
+    }
+
+    this.realtime.orderUpdated(outletId, orderId, order.diningSessionId);
+    this.realtime.kitchenQueueUpdated(outletId);
+
+    if (kotNumber) {
+      const printed = await this.getById(organizationId, outletId, orderId);
+      const addedItems = printed.items.filter((i) => addedItemIds.includes(i.id));
+      await this.printersService.enqueueForType(outletId, 'KITCHEN', {
+        kotNumber,
+        orderNumber: printed.orderNumber,
+        tableName: printed.table?.name,
+        isModification: true,
+        items: addedItems.map((i) => ({
+          name: i.nameSnapshot,
+          quantity: i.quantity,
+          notes: i.notes,
+        })),
+      });
     }
 
     return this.getById(organizationId, outletId, orderId);
@@ -239,6 +302,9 @@ export class OrdersService {
       entityType: 'OrderItem',
       entityId: itemId,
     });
+
+    this.realtime.orderUpdated(outletId, orderId, order.diningSessionId);
+    this.realtime.kitchenQueueUpdated(outletId);
 
     return this.getById(organizationId, outletId, orderId);
   }
@@ -286,6 +352,8 @@ export class OrdersService {
       entityId: orderId,
       newState: dto,
     });
+
+    this.realtime.orderUpdated(outletId, orderId, order.diningSessionId);
 
     return this.getById(organizationId, outletId, orderId);
   }
@@ -399,6 +467,9 @@ export class OrdersService {
       previousState: { status: order.status },
       newState: { status: toStatus },
     });
+
+    this.realtime.orderUpdated(outletId, orderId, order.diningSessionId);
+    if (toStatus === 'CANCELLED') this.realtime.kitchenQueueUpdated(outletId);
 
     return this.getById(organizationId, outletId, orderId);
   }

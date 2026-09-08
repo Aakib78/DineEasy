@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { NotFoundDomainError, ValidationDomainError } from '../../common/errors/domain-errors';
 import { AuditLogService } from '../audit/audit-log.service';
+import { RealtimeGateway } from '../../common/realtime/realtime.gateway';
 
 /**
  * A DiningSession represents one table's occupancy from first QR scan to staff closing the
@@ -14,6 +15,7 @@ export class DiningSessionsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditLog: AuditLogService,
+    private readonly realtime: RealtimeGateway,
   ) {}
 
   async findOrCreateOpenSession(organizationId: string, outletId: string, tableId: string) {
@@ -22,16 +24,20 @@ export class DiningSessionsService {
     });
     if (existing) return existing;
 
-    return this.prisma.$transaction(async (tx) => {
-      const session = await tx.diningSession.create({
+    const session = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.diningSession.create({
         data: { organizationId, outletId, tableId, status: 'OPEN' },
       });
       await tx.restaurantTable.updateMany({
         where: { id: tableId, outletId },
         data: { status: 'OCCUPIED' },
       });
-      return session;
+      return created;
     });
+
+    this.realtime.tableUpdated(outletId, tableId);
+
+    return session;
   }
 
   async getById(organizationId: string, id: string) {
@@ -69,16 +75,18 @@ export class DiningSessionsService {
       );
     }
 
-    const closed = await this.prisma.$transaction(async (tx) => {
-      const updated = await tx.diningSession.update({
-        where: { id },
+    // DiningSession is org-scoped, so a bare `update()` is refused by PrismaService's tenant
+    // guard (SINGLE_RECORD_ACTIONS — only findFirst/updateMany/deleteMany accept an explicit
+    // scope filter). `updateMany` + a follow-up read is the tenant-safe equivalent.
+    await this.prisma.$transaction(async (tx) => {
+      await tx.diningSession.updateMany({
+        where: { id, organizationId },
         data: { status: 'CLOSED', endedAt: new Date() },
       });
       await tx.restaurantTable.updateMany({
         where: { id: session.tableId, outletId },
         data: { status: 'AVAILABLE' },
       });
-      return updated;
     });
 
     await this.auditLog.record({
@@ -90,6 +98,8 @@ export class DiningSessionsService {
       entityId: id,
     });
 
-    return closed;
+    this.realtime.tableUpdated(outletId, session.tableId);
+
+    return this.prisma.diningSession.findFirst({ where: { organizationId, id } });
   }
 }

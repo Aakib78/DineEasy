@@ -21,13 +21,15 @@ KOT/Invoice created
  ACKED (if the printer protocol supports delivery confirmation; otherwise SENT is terminal)
 ```
 
-## v1 scope
+## v1 scope: what's actually implemented vs. planned
 
-`Printer` models a station-scoped (kitchen) or outlet-scoped (receipt) printer with `connectionType: NETWORK | USB` and, for network printers, `ipAddress`/`port`. The v1 print agent targets **network (Ethernet/Wi-Fi) ESC/POS thermal printers** — the dominant type in Indian QSRs/cafés — sending raw ESC/POS byte sequences over a raw TCP socket to the printer's port (typically 9100), run as part of the API process so it has direct LAN access without another moving part to deploy. USB printers are modeled in the schema (`connectionType: USB`) for forward-compatibility but v1's print agent does not implement a USB driver — see `docs/architecture.md` §15 for current build status.
+**Implemented** (`PrintersModule` — `printers.service.ts`/`printers.controller.ts`): `Printer` CRUD (station-scoped for kitchen, outlet-scoped for receipt) with `connectionType: NETWORK | USB` and, for network printers, `ipAddress`/`port`; the `PrinterJob` queue itself (`QUEUED → SENT/FAILED → ACKED`, with automatic re-queue up to 3 attempts on failure); `GET /printers/:id/jobs/next` for a print agent to poll and `PATCH /printers/jobs/:jobId/status` for it to report back; and the two call sites that actually enqueue real jobs — `OrdersService` enqueues a `KITCHEN` job to every active kitchen printer at the outlet right after each KOT is created (initial placement and every `addItems` modification), and `BillingService` enqueues a `RECEIPT` job right after an invoice is generated. Both enqueue calls are best-effort and fail open — same philosophy as `RedisService` — so an outlet with no printer configured, or a transient DB hiccup enqueuing the job, never blocks placing an order or generating a bill.
+
+**Not implemented — a separate, out-of-repo concern**: the print agent itself. Nothing in this codebase opens a TCP socket to a printer, speaks ESC/POS, or runs on a schedule pulling jobs off the queue — `nextQueuedJob`/`updateJobStatus` are the API contract such an agent would use, not a working agent. The target design (network ESC/POS thermal printers over raw TCP to port 9100, the dominant type in Indian QSRs/cafés, with USB modeled in the schema for forward-compatibility but no driver planned for v1) is recorded here as intent for whoever builds that piece, not as a claim that it exists. See `docs/architecture.md` §15 for the authoritative "done vs. planned" list.
 
 ## Why this stays out of the domain layer
 
-`KitchenService.createKot()` and `BillingService.issueInvoice()` have zero knowledge of ESC/POS, printer IPs, or retry logic — they only know how to enqueue a `PrinterJob`. This means: a restaurant with no printers configured yet still gets working KOT/billing (the queue just accumulates unconsumed jobs, harmlessly); adding USB support, a cloud print service, or a different receipt format later touches only the print-agent code, never order/billing/kitchen logic; and a printer being offline for an hour never blocks taking new orders.
+`OrdersService` and `BillingService` have zero knowledge of ESC/POS, printer IPs, or retry logic — they only know how to enqueue a `PrinterJob` via `PrintersService.enqueueForType()`. This means: a restaurant with no printers configured yet still gets working KOT/billing (the queue just accumulates unconsumed jobs, harmlessly); building the print agent, adding USB support, a cloud print service, or a different receipt format later touches only that new component, never order/billing/kitchen logic; and a printer being offline for an hour never blocks taking new orders.
 
 ## Operator visibility
 

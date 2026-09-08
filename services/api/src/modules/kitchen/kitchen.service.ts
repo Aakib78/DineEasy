@@ -3,6 +3,7 @@ import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { NotFoundDomainError } from '../../common/errors/domain-errors';
 import { AuditLogService } from '../audit/audit-log.service';
 import { OrdersService } from '../orders/orders.service';
+import { RealtimeGateway } from '../../common/realtime/realtime.gateway';
 import { CreateKitchenStationDto } from './dto/create-station.dto';
 import { UpdateKitchenItemStatusDto } from './dto/update-kitchen-item-status.dto';
 import {
@@ -27,6 +28,7 @@ export class KitchenService {
     private readonly prisma: PrismaService,
     private readonly auditLog: AuditLogService,
     private readonly ordersService: OrdersService,
+    private readonly realtime: RealtimeGateway,
   ) {}
 
   // ---------------------------------------------------------------------
@@ -101,6 +103,12 @@ export class KitchenService {
     });
 
     await this.recomputeOrderStatus(organizationId, outletId, item.kitchenOrder.orderId);
+
+    // recomputeOrderStatus already emits an order.updated hint if the order's own status
+    // moved; this covers the common case where an item's sub-status changed without that
+    // (e.g. a second item on an already-PREPARING ticket reaching READY).
+    this.realtime.kitchenQueueUpdated(outletId);
+    this.realtime.orderUpdated(outletId, item.kitchenOrder.orderId);
 
     return this.prisma.kitchenOrderItem.findFirst({ where: { id: kitchenOrderItemId } });
   }
