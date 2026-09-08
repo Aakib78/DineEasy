@@ -37,6 +37,12 @@ eventually, `services/api` itself) that talks to the API entirely client-side.
   never connects (a captive portal, a proxy blocking WebSocket upgrades) — this is the piece
   docs/qr-ordering.md flagged as "not yet built" when that doc was first written; it's built now
   and that doc has been updated to match.
+- **Wire types** (`src/lib/api/types.ts`): now a one-line re-export of `@dineeasy/shared-types`
+  (`packages/shared_types`, an npm workspace) rather than this app's own hand-duplicated copy —
+  see docs/architecture.md §13 for why that package's types are still hand-written rather than
+  generated from the backend's OpenAPI spec (`docs/api.md`), and for how this move was verified
+  end-to-end (`tsc -b && vite build` and `oxlint` both still pass) despite this sandbox's
+  Prisma restriction, since neither touches the database.
 
 ## What's explicitly not built
 

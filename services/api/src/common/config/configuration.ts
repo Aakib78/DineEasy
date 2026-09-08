@@ -9,6 +9,14 @@ export default () => ({
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean),
+    // On by default outside production (a LAN-only restaurant deployment isn't public-internet-
+    // facing, so exposing /api/docs is low-risk day to day), but an explicit API_DOCS_ENABLED
+    // always wins either way — set it to 'false' to turn the docs UI off anywhere, or 'true' to
+    // turn it on in production too, without touching NODE_ENV.
+    apiDocsEnabled:
+      process.env.API_DOCS_ENABLED !== undefined
+        ? process.env.API_DOCS_ENABLED === 'true'
+        : process.env.NODE_ENV !== 'production',
   },
   locale: {
     timezone: process.env.TZ ?? 'Asia/Kolkata',

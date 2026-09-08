@@ -48,6 +48,11 @@ class EnvironmentVariables {
   @IsOptional()
   @IsString()
   LOG_LEVEL?: string;
+
+  /** 'true'/'false'. Unset defaults to "on outside production" — see configuration.ts. */
+  @IsOptional()
+  @IsIn(['true', 'false'])
+  API_DOCS_ENABLED?: string;
 }
 
 export function validateEnv(config: Record<string, unknown>) {

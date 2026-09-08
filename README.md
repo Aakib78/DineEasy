@@ -16,7 +16,7 @@ dineeasy/
 ├── services/
 │   └── api/                 # NestJS + TypeScript backend API
 ├── packages/
-│   └── shared_types/         # TypeScript types/DTOs shared between api and customer_web
+│   └── shared_types/         # @dineeasy/shared-types — TS types for apps/customer_web
 ├── infrastructure/
 │   └── docker/               # docker-compose files for local/dev/test/prod-like deployment
 ├── docs/                      # Architecture & operational documentation
