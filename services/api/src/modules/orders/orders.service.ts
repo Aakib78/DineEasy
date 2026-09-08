@@ -10,7 +10,12 @@ import { DiningSessionsService } from '../dining-sessions/dining-sessions.servic
 import { RealtimeGateway } from '../../common/realtime/realtime.gateway';
 import { PrintersService } from '../printers/printers.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { OrderStatus, assertOrderTransition } from '../../common/order/order-state-machine';
+import {
+  OrderStatus,
+  assertOrderTransition,
+  isOrderFinanciallySettled,
+  ORDER_FINANCIALLY_SETTLED_STATUSES,
+} from '../../common/order/order-state-machine';
 import { CreateOrderDto, CreateOrderItemDto } from './dto/create-order.dto';
 import { AddOrderItemsDto } from './dto/add-order-items.dto';
 import { ApplyDiscountDto } from './dto/apply-discount.dto';
@@ -278,7 +283,12 @@ export class OrdersService {
     actorUserId: string,
   ) {
     const order = await this.getById(organizationId, outletId, orderId);
-    if (['BILLED', 'PAID', 'COMPLETED', 'CANCELLED', 'REFUNDED'].includes(order.status)) {
+    // Deliberately BILLED + ORDER_FINANCIALLY_SETTLED_STATUSES rather than that constant alone:
+    // once a bill exists, line items are frozen even before payment, since the bill already
+    // reflects them — a stricter rule than "has money actually moved" (see the constant's doc
+    // comment in order-state-machine.ts for the full contrast with applyDiscount below).
+    const itemsLockedFrom: OrderStatus[] = ['BILLED', ...ORDER_FINANCIALLY_SETTLED_STATUSES];
+    if (itemsLockedFrom.includes(order.status as OrderStatus)) {
       throw new ValidationDomainError(`Cannot cancel an item once the order is ${order.status}`);
     }
     const item = order.items.find((i) => i.id === itemId);
@@ -320,7 +330,7 @@ export class OrdersService {
     actorUserId: string,
   ) {
     const order = await this.getById(organizationId, outletId, orderId);
-    if (['PAID', 'COMPLETED', 'CANCELLED', 'REFUNDED'].includes(order.status)) {
+    if (isOrderFinanciallySettled(order.status as OrderStatus)) {
       throw new ValidationDomainError(`Cannot apply a discount once the order is ${order.status}`);
     }
     if (order.discounts.length > 0) {
@@ -503,7 +513,14 @@ export class OrdersService {
     return order;
   }
 
-  /** The POS/waiter "active orders" board — everything not yet fully settled or voided. */
+  /**
+   * The POS/waiter "active orders" board — everything not yet fully settled or voided.
+   * Deliberately its own inline status list rather than ORDER_FINANCIALLY_SETTLED_STATUSES:
+   * that constant treats PAID as settled (correctly, for "can this order still be discounted"),
+   * but a PAID order still belongs on the active board until it's COMPLETED — staff still need
+   * to see it. See order-state-machine.ts for the full contrast between the status checks that
+   * look alike across this file.
+   */
   async listActiveForOutlet(organizationId: string, outletId: string) {
     return this.prisma.order.findMany({
       where: {

@@ -2,6 +2,7 @@ import {
   assertKitchenItemTransition,
   assertOrderTransition,
   canTransitionOrder,
+  isOrderFinanciallySettled,
   KitchenItemStatus,
   OrderStatus,
 } from './order-state-machine';
@@ -122,6 +123,33 @@ describe('order state machine', () => {
       expect(() => assertKitchenItemTransition('NEW', 'COMPLETED')).toThrow(
         InvalidOrderTransitionError,
       );
+    });
+  });
+
+  describe('isOrderFinanciallySettled', () => {
+    it('treats PAID, COMPLETED, CANCELLED, and REFUNDED as settled', () => {
+      expect(isOrderFinanciallySettled('PAID')).toBe(true);
+      expect(isOrderFinanciallySettled('COMPLETED')).toBe(true);
+      expect(isOrderFinanciallySettled('CANCELLED')).toBe(true);
+      expect(isOrderFinanciallySettled('REFUNDED')).toBe(true);
+    });
+
+    it("does not treat BILLED as settled — a bill isn't a payment", () => {
+      expect(isOrderFinanciallySettled('BILLED')).toBe(false);
+    });
+
+    it('does not treat any pre-billing state as settled', () => {
+      const preBilling: OrderStatus[] = [
+        'DRAFT',
+        'PLACED',
+        'ACCEPTED',
+        'PREPARING',
+        'READY',
+        'SERVED',
+      ];
+      for (const status of preBilling) {
+        expect(isOrderFinanciallySettled(status)).toBe(false);
+      }
     });
   });
 });

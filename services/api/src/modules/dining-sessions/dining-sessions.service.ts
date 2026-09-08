@@ -3,6 +3,7 @@ import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { NotFoundDomainError, ValidationDomainError } from '../../common/errors/domain-errors';
 import { AuditLogService } from '../audit/audit-log.service';
 import { RealtimeGateway } from '../../common/realtime/realtime.gateway';
+import { OrderStatus, isOrderFinanciallySettled } from '../../common/order/order-state-machine';
 
 /**
  * A DiningSession represents one table's occupancy from first QR scan to staff closing the
@@ -59,15 +60,16 @@ export class DiningSessionsService {
 
   /**
    * Staff-initiated close (spec §11 "close table"), typically once the bill is fully paid.
-   * Refuses to close while any order in the session is still active (not yet PAID/COMPLETED/
-   * CANCELLED/REFUNDED) — an order domain rule enforced here rather than left to the client
-   * to remember, per spec §31/§50.
+   * Refuses to close while any order in the session is still active (not yet financially
+   * settled — see ORDER_FINANCIALLY_SETTLED_STATUSES in order-state-machine.ts, notably still
+   * blocked at BILLED: a bill having been generated doesn't mean it's been paid) — an order
+   * domain rule enforced here rather than left to the client to remember, per spec §31/§50.
    */
   async close(organizationId: string, outletId: string, id: string, actorUserId: string) {
     const session = await this.getById(organizationId, id);
 
     const unsettledOrder = session.orders.find(
-      (o) => !['PAID', 'COMPLETED', 'CANCELLED', 'REFUNDED'].includes(o.status),
+      (o) => !isOrderFinanciallySettled(o.status as OrderStatus),
     );
     if (unsettledOrder) {
       throw new ValidationDomainError(

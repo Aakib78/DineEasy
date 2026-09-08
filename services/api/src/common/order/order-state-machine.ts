@@ -57,6 +57,44 @@ export function assertOrderTransition(from: OrderStatus, to: OrderStatus): void 
   }
 }
 
+/**
+ * Order statuses that represent a final, financially-settled state — no further order-level
+ * money mutation (adjusting a discount, closing the table it belongs to) should happen from
+ * here. Deliberately excludes BILLED: a billed order has a bill generated but no money has
+ * actually moved yet, so for these purposes it's still "open" — e.g. a discount can still be
+ * corrected before the guest actually pays, and a table can't be closed while an order sits at
+ * BILLED unpaid (that's exactly the case DiningSessionsService.close needs to block on).
+ *
+ * This is narrower than "terminal" in the TRANSITIONS table above (CANCELLED/REFUNDED have no
+ * further transitions either, but so would a hypothetical future non-financial terminal state)
+ * — it's specifically the "the money side of this order is done" concept, currently shared by
+ * OrdersService.applyDiscount and DiningSessionsService.close, which is why it's centralized
+ * here rather than left as two independently hand-typed array literals that could silently
+ * drift apart.
+ *
+ * A few other status checks elsewhere look similar at a glance but are answering genuinely
+ * different questions, and are deliberately NOT expressed with this constant:
+ *   - OrdersService.cancelItem also locks at BILLED (once a bill exists, line items are frozen
+ *     even before payment, since the bill already reflects them)
+ *   - OrdersService.listActiveForOutlet's "still on the active board" set excludes only
+ *     COMPLETED/CANCELLED/REFUNDED (BILLED and PAID orders are still "active" — they still need
+ *     completing)
+ *   - PaymentsService.recordPayment uses an allow-list (BILLED/PAID only) — the inverse shape
+ *     of a settled check, and a different rule (which orders may currently take a payment)
+ * Do not reuse this constant for those; add a differently-named one if a genuine duplicate of
+ * one of *those* rules shows up instead.
+ */
+export const ORDER_FINANCIALLY_SETTLED_STATUSES: readonly OrderStatus[] = [
+  'PAID',
+  'COMPLETED',
+  'CANCELLED',
+  'REFUNDED',
+];
+
+export function isOrderFinanciallySettled(status: OrderStatus): boolean {
+  return ORDER_FINANCIALLY_SETTLED_STATUSES.includes(status);
+}
+
 /** Mirrors `KitchenItemStatus` in the schema — see KitchenService for how it drives Order.status. */
 export type KitchenItemStatus = 'NEW' | 'PREPARING' | 'READY' | 'COMPLETED' | 'CANCELLED';
 
