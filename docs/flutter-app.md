@@ -137,9 +137,36 @@ Kitchen/KDS, Billing, Reports) builds on top of, not those features themselves:
   non-match instead of stripping non-matching substrings — the correct tool for a
   whole-string-shaped validation pattern.
 
-**Not built yet**: Reports, Staff management, offline/local-cache behavior (tracked with the
-LAN/offline backend slice — docs/offline-mode.md), push/local notifications, and the
-Windows/Android platform scaffolding itself (see below).
+- **Reports** (`lib/features/reports/`) — `ReportsScreen`, a read-only dashboard over the three
+  `reports.view`-gated endpoints (`GET /reports/sales-summary`, `/reports/top-items`,
+  `/reports/payment-breakdown`): a `SegmentedButton` picks a date-range preset (Today/Last 7
+  days/Last 30 days — `ReportRangePreset`), and three independently-loading `_ReportCard`
+  sections render the sales summary (revenue, order/dine-in/takeaway counts, average order
+  value, and a subtotal→discount→tax→service-charge→revenue breakdown), the top-selling items
+  list (server-ordered and server-limited — this screen doesn't re-sort or re-cap it), and a
+  per-payment-method breakdown. `to` is always "now" for every preset, including Today; only how
+  far back `from` reaches changes, and Today sends **no** `from` at all rather than the client
+  computing its own midnight — `ReportsService.startOfDay` on the backend already does that, and
+  reimplementing it here risked a timezone mismatch with the server. No mutating controls exist
+  anywhere on this screen, so — unlike POS/Tables/Kitchen/Billing — there's no per-control RBAC
+  gating to layer on top of the tab-level `reports.view` check the nav shell already does. New
+  pure-logic tests: `test/features/reports/reports_models_test.dart` (6 tests — JSON parsing and
+  zero-default handling for all three response shapes).
+
+  **A real bug caught during hand-review of this slice**: the resolved `(from, to)` date range
+  was originally computed by a *private* provider (`_resolvedRangeProvider`) that only
+  `ref.watch`ed the selected preset — a plain `Provider` recomputes only when something it
+  watches changes, and the preset doesn't change on a pull-to-refresh, so `to` (captured via
+  `DateTime.now()` inside it) would have stayed frozen at whichever moment the preset was first
+  selected. Pulling to refresh would have silently kept re-fetching the exact same stale window
+  instead of advancing to the current time, directly contradicting the "captured at call time"
+  behavior the provider's own doc comment claimed. Fixed by making the provider non-private
+  (`resolvedReportRangeProvider`) and having `ReportsScreen`'s `onRefresh` explicitly invalidate
+  it alongside the three report providers, so every pull-to-refresh actually recomputes "now".
+
+**Not built yet**: Staff management, offline/local-cache behavior (tracked with the LAN/offline
+backend slice — docs/offline-mode.md), push/local notifications, and the Windows/Android
+platform scaffolding itself (see below).
 
 ## Why there's no `android/`, `ios/`, or `windows/` folder here
 
@@ -172,26 +199,34 @@ correctness (including several real mistakes caught and fixed during that review
 `int.clamp()` returning `num`, not `int`, in `home_shell.dart`, and the two POS bugs described
 above), but that is not a substitute for the analyzer and test runner actually running. The
 widget screens (`PosHomeScreen`, `OrderBuilderScreen`, `TablesManagementScreen`, `KdsScreen`,
-`BillingScreen`/`BillingDetailScreen`, and everything under `lib/features/pos/widgets/`) are the
-highest-risk code in the app precisely because hand-review cannot simulate the widget tree,
-layout constraints, or `Tab`/`TabController`/`SegmentedButton` lifecycle the way `flutter run` or
-a widget test harness would — treat those as needing the most scrutiny on first real run. Two
-specific things to check first: `tables_management_screen.dart` uses `DropdownButtonFormField`'s
-`value:` parameter rather than the newer `initialValue:` name, because `pubspec.yaml`'s SDK floor
-(`>=3.22.0`, no upper bound) includes Flutter versions that predate the rename — `value:` should
-still work as a supported-but-deprecated alias on a newer SDK too, but that assumption about
-Flutter's own deprecation window is exactly the kind of thing this sandbox has no compiler to
-confirm; and `billing_detail_screen.dart`'s `_RecordPaymentCard` relies on `didUpdateWidget`
-re-syncing a `TextEditingController` after a partial payment (see the Billing section above) —
-worth specifically exercising a split-payment flow on first real run, since that's exactly the
-kind of stateful-widget-lifecycle interaction hand-review is least reliable at. The test files
-under `test/core/auth/`, `test/core/money/`, and `test/features/` (`jwt_decoder_test.dart`,
-`access_token_claims_test.dart`, `money_test.dart`, `pos_cart_test.dart`, `kds_models_test.dart`,
-`billing_models_test.dart`) have no platform-channel or rendering dependency — `pos_cart_test.dart`
-exercises `PosCartNotifier`'s state transitions and subtotal math directly, `kds_models_test.dart`
-exercises `KdsTicket`/`KdsTicketItem` JSON parsing and the active-ticket filter,
-`billing_models_test.dart` exercises `Invoice` JSON parsing, none touching a widget — and should
-be the first thing to run once the SDK is available:
+`BillingScreen`/`BillingDetailScreen`, `ReportsScreen`, and everything under
+`lib/features/pos/widgets/`) are the highest-risk code in the app precisely because hand-review
+cannot simulate the widget tree, layout constraints, or `Tab`/`TabController`/`SegmentedButton`
+lifecycle the way `flutter run` or a widget test harness would — treat those as needing the most
+scrutiny on first real run. Specific things to check first: `tables_management_screen.dart` uses
+`DropdownButtonFormField`'s `value:` parameter rather than the newer `initialValue:` name,
+because `pubspec.yaml`'s SDK floor (`>=3.22.0`, no upper bound) includes Flutter versions that
+predate the rename — `value:` should still work as a supported-but-deprecated alias on a newer
+SDK too, but that assumption about Flutter's own deprecation window is exactly the kind of thing
+this sandbox has no compiler to confirm; `billing_detail_screen.dart`'s `_RecordPaymentCard`
+relies on `didUpdateWidget` re-syncing a `TextEditingController` after a partial payment (see the
+Billing section above) — worth specifically exercising a split-payment flow on first real run,
+since that's exactly the kind of stateful-widget-lifecycle interaction hand-review is least
+reliable at; and `reports_screen.dart`'s `SegmentedButton<ReportRangePreset>` reuses the same
+Material 3 widget already confirmed compatible with this SDK floor in Billing's payment-method
+selector, but pull-to-refresh on the Reports tab (`resolvedReportRangeProvider`'s invalidation —
+see the Reports section above) is worth specifically exercising too, since that's exactly the
+class of "provider only recomputes when something it watches changes, not on a timer" bug that
+hand-review is good at catching in isolation but easy to miss end-to-end without actually running
+the refresh gesture. The test files under `test/core/auth/`, `test/core/money/`, and
+`test/features/` (`jwt_decoder_test.dart`, `access_token_claims_test.dart`, `money_test.dart`,
+`pos_cart_test.dart`, `kds_models_test.dart`, `billing_models_test.dart`,
+`reports_models_test.dart`) have no platform-channel or rendering dependency —
+`pos_cart_test.dart` exercises `PosCartNotifier`'s state transitions and subtotal math directly,
+`kds_models_test.dart` exercises `KdsTicket`/`KdsTicketItem` JSON parsing and the active-ticket
+filter, `billing_models_test.dart` exercises `Invoice` JSON parsing, `reports_models_test.dart`
+exercises `SalesSummary`/`TopItem`/`PaymentBreakdownLine` JSON parsing and zero-default handling,
+none touching a widget — and should be the first thing to run once the SDK is available:
 
 ```bash
 cd apps/restaurant_app

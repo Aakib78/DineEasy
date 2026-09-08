@@ -7,6 +7,7 @@ import '../../core/rbac/permissions.dart';
 import '../billing/billing_screen.dart';
 import '../kitchen/kds_screen.dart';
 import '../pos/pos_home_screen.dart';
+import '../reports/reports_screen.dart';
 import '../tables/tables_management_screen.dart';
 import 'placeholder_screen.dart';
 
@@ -59,7 +60,7 @@ final _destinations = <_Destination>[
     label: 'Reports',
     icon: Icons.bar_chart,
     requiredPermission: Permissions.reportsView,
-    screen: PlaceholderScreen(title: 'Reports', icon: Icons.bar_chart),
+    screen: ReportsScreen(),
   ),
   const _Destination(
     label: 'Staff',
