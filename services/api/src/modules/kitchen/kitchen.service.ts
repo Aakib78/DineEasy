@@ -11,6 +11,7 @@ import {
   OrderStatus,
   assertKitchenItemTransition,
 } from '../../common/order/order-state-machine';
+import { deriveKitchenDrivenOrderStatus } from './kitchen-status.util';
 
 /** The order statuses the kitchen is allowed to drive forward — see recomputeOrderStatus. */
 const KITCHEN_DRIVEN_PATH: OrderStatus[] = ['PLACED', 'ACCEPTED', 'PREPARING', 'READY'];
@@ -126,16 +127,9 @@ export class KitchenService {
     const items = await this.prisma.kitchenOrderItem.findMany({
       where: { kitchenOrder: { orderId } },
     });
-    const relevant = items.filter((i) => i.status !== 'CANCELLED');
-    if (relevant.length === 0) return;
-
-    const allDone = relevant.every((i) => i.status === 'READY' || i.status === 'COMPLETED');
-    const anyStarted = relevant.some((i) => i.status !== 'NEW');
-
-    if (allDone) {
-      await this.advanceOrderTo(organizationId, outletId, orderId, 'READY');
-    } else if (anyStarted) {
-      await this.advanceOrderTo(organizationId, outletId, orderId, 'PREPARING');
+    const target = deriveKitchenDrivenOrderStatus(items.map((i: { status: string }) => i.status));
+    if (target) {
+      await this.advanceOrderTo(organizationId, outletId, orderId, target);
     }
   }
 
