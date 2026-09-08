@@ -62,7 +62,20 @@ flutter run -d windows      # or: flutter devices, then -d <android-device-id>
 
 On first run, point it at your dev API (Settings → Server Connection → `http://localhost:3000`, or your machine's LAN IP if running on a physical Android device/tablet). See `docs/offline-mode.md` for how LAN discovery is meant to work once implemented.
 
-## 7. Demo login
+## 7. Run the print agent (optional — only needed if you have a network thermal printer)
+
+```bash
+cd services/print-agent
+cp .env.example .env
+# edit .env: PRINT_AGENT_EMAIL/PASSWORD for a staff account scoped to one outlet with only
+# the "printers.manage" permission (create it via the Staff screen first), and confirm
+# PRINT_AGENT_API_BASE_URL points at your running API from step 4
+npm run build && npm start        # or `npm run dev` to skip the build step
+```
+
+Everything else in DineEasy works without this — orders, billing, and KOTs all function normally with no printer configured; jobs just queue up unconsumed until an agent drains them. See `services/print-agent/README.md` for the full setup (registering a `Printer` first) and what it does and doesn't cover.
+
+## 8. Demo login
 
 The seed script (step 3) creates:
 
