@@ -45,10 +45,36 @@ Kitchen/KDS, Billing, Reports) builds on top of, not those features themselves:
   Each placeholder becomes a real screen in its own later slice; nothing in the shell needs to
   change when that happens.
 
-**Not built yet**: every actual feature screen (POS order entry, table layout, KDS, billing,
-reports, staff management), offline/local-cache behavior (tracked with the LAN/offline backend
-slice — docs/offline-mode.md), push/local notifications, and the Windows/Android platform
-scaffolding itself (see below).
+- **POS** (`lib/features/pos/`) — the first real feature screen beyond the nav shell. Two screens:
+  `PosHomeScreen` (a floor-by-floor table grid, color-coded via `TableTile` — green/available,
+  amber/reserved, orange/occupied-or-has-an-open-order — plus a "Takeaway" entry point) and
+  `OrderBuilderScreen` (category-tabbed menu browsing, `ItemCustomizeSheet` for variant/modifier
+  selection, a `CartPanel` docked at the bottom, and a submit that calls either
+  `POST /orders` for a brand-new order or `POST /orders/:id/items` when the tapped table already
+  has one open — decided by cross-referencing the active-orders list `PosHomeScreen` fetched
+  before navigating in). Data layer: `MenuRepository`/`TablesRepository`/`OrdersRepository`
+  (`lib/features/pos/data/`) wrapping the same three endpoints the customer PWA and POS UI both
+  ultimately price through (`OrdersService` on the backend is the sole pricing authority — see
+  `lib/core/money/money.dart`'s doc comment; every total shown while building a cart here is a
+  client-side *estimate*, recomputed for real the moment the order is actually created).
+  `PosCartNotifier` (`lib/features/pos/state/pos_cart.dart`) is `autoDispose` on purpose — leaving
+  the POS flow (back to the table grid) always starts the next order with an empty cart, since a
+  leftover cart from a previous table would be a real correctness hazard, not just a UX nit.
+  Two bugs were caught during hand-review of this slice (see "Verification status" below for what
+  that review process can and can't catch): `menu_item_tile.dart` originally picked a
+  multi-variant item's "from" price by comparing *formatted* price strings
+  (`'₹150.00'.compareTo('₹99.00')`) instead of the actual amounts, which sorts wrong for any pair
+  of prices that differ in digit count — fixed by giving `Money` real comparison operators
+  (`Comparable<Money>`, `<`, `<=`, ...) and comparing values, not strings. Separately,
+  `PosCartLine.lineId` was initially just `DateTime.now().microsecondsSinceEpoch.toString()`,
+  which a fast enough double-tap could collide on — fixed with `nextCartLineId()`
+  (`lib/features/pos/data/pos_cart_line.dart`), which appends a monotonic in-memory counter.
+
+**Not built yet**: Tables (floor/table *management* — creating/renaming/disabling tables, beyond
+what POS's read-only table picker covers), Kitchen/KDS, Billing, Reports, Staff management,
+offline/local-cache behavior (tracked with the LAN/offline backend slice —
+docs/offline-mode.md), push/local notifications, and the Windows/Android platform scaffolding
+itself (see below).
 
 ## Why there's no `android/`, `ios/`, or `windows/` folder here
 
@@ -77,17 +103,23 @@ general pattern this project follows: write deliberately correct code by hand, r
 carefully, and say plainly what could not be machine-verified rather than silently assuming
 success). Concretely, nobody has run `flutter pub get`, `flutter analyze`, `flutter test`, or
 `flutter run` against this code yet. Every file was reviewed by hand for type and syntax
-correctness (including a couple of real mistakes caught and fixed during that review — e.g.
-`int.clamp()` returning `num`, not `int`, in `home_shell.dart`), but that is not a substitute
-for the analyzer and test runner actually running. The two pure-Dart test files under
-`test/core/auth/` (`jwt_decoder_test.dart`, `access_token_claims_test.dart`) have zero Flutter
-widget or platform-channel dependency and should be the first thing to run once the SDK is
-available:
+correctness (including several real mistakes caught and fixed during that review — e.g.
+`int.clamp()` returning `num`, not `int`, in `home_shell.dart`, and the two POS bugs described
+above), but that is not a substitute for the analyzer and test runner actually running. The
+widget screens (`PosHomeScreen`, `OrderBuilderScreen`, and everything under
+`lib/features/pos/widgets/`) are the highest-risk code in the app precisely because hand-review
+cannot simulate the widget tree, layout constraints, or `Tab`/`TabController` lifecycle the way
+`flutter run` or a widget test harness would — treat those as needing the most scrutiny on first
+real run. The test files under `test/core/auth/`, `test/core/money/`, and `test/features/pos/`
+(`jwt_decoder_test.dart`, `access_token_claims_test.dart`, `money_test.dart`, `pos_cart_test.dart`)
+have no platform-channel or rendering dependency — `pos_cart_test.dart` exercises
+`PosCartNotifier`'s state transitions and subtotal math directly, without touching any widget —
+and should be the first thing to run once the SDK is available:
 
 ```bash
 cd apps/restaurant_app
 flutter pub get
-flutter test test/core/auth
+flutter test test/core test/features/pos
 flutter analyze
 ```
 

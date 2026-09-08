@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/auth/access_token_claims.dart';
 import '../../core/auth/auth_session.dart';
 import '../../core/rbac/permissions.dart';
+import '../pos/pos_home_screen.dart';
 import 'placeholder_screen.dart';
 
 class _Destination {
@@ -31,7 +32,7 @@ final _destinations = <_Destination>[
     label: 'POS',
     icon: Icons.point_of_sale,
     requiredPermission: Permissions.ordersCreate,
-    screen: PlaceholderScreen(title: 'Point of Sale', icon: Icons.point_of_sale),
+    screen: PosHomeScreen(),
   ),
   const _Destination(
     label: 'Tables',
