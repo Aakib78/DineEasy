@@ -2,7 +2,7 @@
 
 ## Why printing is a queue, not a direct call
 
-Restaurant printers (kitchen dot-matrix/thermal, receipt thermal) are flaky, sometimes offline, sometimes out of paper — and a KOT/bill must never be *lost* just because a printer hiccuped at the wrong moment (spec §43: "printer unavailable" is an explicit failure case to handle gracefully). So `KitchenModule`/`BillingModule` never talk to a printer directly; they enqueue a `PrinterJob` (`payload` is a structured, printer-agnostic description of what to print — order/table/items for a KOT, or the full invoice for a receipt) and move on. A separate print-agent concern drains the queue.
+Restaurant printers (kitchen dot-matrix/thermal, receipt thermal) are flaky, sometimes offline, sometimes out of paper — and a KOT/bill must never be *lost* just because a printer hiccuped at the wrong moment (spec §43: "printer unavailable" is an explicit failure case to handle gracefully). So `KitchenModule`/`BillingModule` never talk to a printer directly; they enqueue a `PrinterJob` (`payload` is a structured, printer-agnostic description of what to print — order/table/items for a KOT, or the full invoice for a receipt) and move on. A separate process — `services/print-agent`, see below — drains the queue.
 
 ```
 KOT/Invoice created
@@ -25,7 +25,18 @@ KOT/Invoice created
 
 **Implemented** (`PrintersModule` — `printers.service.ts`/`printers.controller.ts`): `Printer` CRUD (station-scoped for kitchen, outlet-scoped for receipt) with `connectionType: NETWORK | USB` and, for network printers, `ipAddress`/`port`; the `PrinterJob` queue itself (`QUEUED → SENT/FAILED → ACKED`, with automatic re-queue up to 3 attempts on failure); `GET /printers/:id/jobs/next` for a print agent to poll and `PATCH /printers/jobs/:jobId/status` for it to report back; and the two call sites that actually enqueue real jobs — `OrdersService` enqueues a `KITCHEN` job to every active kitchen printer at the outlet right after each KOT is created (initial placement and every `addItems` modification), and `BillingService` enqueues a `RECEIPT` job right after an invoice is generated. Both enqueue calls are best-effort and fail open — same philosophy as `RedisService` — so an outlet with no printer configured, or a transient DB hiccup enqueuing the job, never blocks placing an order or generating a bill.
 
-**Not implemented — a separate, out-of-repo concern**: the print agent itself. Nothing in this codebase opens a TCP socket to a printer, speaks ESC/POS, or runs on a schedule pulling jobs off the queue — `nextQueuedJob`/`updateJobStatus` are the API contract such an agent would use, not a working agent. The target design (network ESC/POS thermal printers over raw TCP to port 9100, the dominant type in Indian QSRs/cafés, with USB modeled in the schema for forward-compatibility but no driver planned for v1) is recorded here as intent for whoever builds that piece, not as a claim that it exists. See `docs/architecture.md` §15 for the authoritative "done vs. planned" list.
+**Implemented — the print agent** (`services/print-agent`, a separate small standalone Node/
+TypeScript process, not a NestJS module — see its own README.md for the full design): polls
+`nextQueuedJob`/reports via `updateJobStatus` for every configured `NETWORK` printer, renders
+the job's payload into ESC/POS bytes, and opens a raw TCP connection to port 9100 (the
+dominant convention for network thermal printers, and the target this was always scoped to —
+Indian QSRs/cafés overwhelmingly use this class of printer). `USB` remains modeled in the
+schema for forward-compatibility only; no driver is planned for v1, and the agent skips any
+printer configured that way. See `services/print-agent/README.md`'s "Verification status" for
+exactly how this was verified without physical printer hardware (a real local TCP server
+standing in for the printer, a real local HTTP server standing in for `services/api`, plus an
+actual end-to-end run of the compiled agent against both) and `docs/architecture.md` §15 for
+the authoritative "done vs. planned" list.
 
 ## Why this stays out of the domain layer
 

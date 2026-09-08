@@ -5,6 +5,7 @@
   "description": "DineEasy — Run your restaurant, effortlessly. Monorepo root.",
   "workspaces": [
     "services/api",
+    "services/print-agent",
     "apps/customer_web",
     "packages/shared_types"
   ],

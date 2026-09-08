@@ -14,7 +14,8 @@ dineeasy/
 │   ├── restaurant_app/     # Flutter staff app (POS, tables, KDS, admin) — Android + Windows
 │   └── customer_web/       # Customer QR ordering PWA (Vite + React + TS)
 ├── services/
-│   └── api/                 # NestJS + TypeScript backend API
+│   ├── api/                  # NestJS + TypeScript backend API
+│   └── print-agent/          # Standalone LAN daemon that drains the PrinterJob queue
 ├── packages/
 │   └── shared_types/         # @dineeasy/shared-types — TS types for apps/customer_web
 ├── infrastructure/
@@ -72,7 +73,7 @@ Most restaurant software assumes the internet is always on. DineEasy doesn't. Th
 - [`docs/offline-mode.md`](docs/offline-mode.md) — LAN-first / offline architecture
 - [`docs/qr-ordering.md`](docs/qr-ordering.md) — table QR + customer ordering flow
 - [`docs/payments.md`](docs/payments.md) — payment provider abstraction
-- [`docs/printing.md`](docs/printing.md) — KOT/receipt printer integration architecture
+- [`docs/printing.md`](docs/printing.md) — KOT/receipt printer integration architecture ([`services/print-agent/README.md`](services/print-agent/README.md) for the standalone agent itself)
 - [`docs/local-development.md`](docs/local-development.md) — dev environment setup
 - [`docs/deployment.md`](docs/deployment.md) — LAN deployment guide
 - [`docs/troubleshooting.md`](docs/troubleshooting.md) — common issues
