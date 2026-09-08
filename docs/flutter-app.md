@@ -83,9 +83,29 @@ Kitchen/KDS, Billing, Reports) builds on top of, not those features themselves:
   that unlocks the tab itself) so a view-only role doesn't see buttons that are guaranteed to
   403 — UX only, per usual; `PermissionsGuard` on the server is the actual enforcement.
 
-**Not built yet**: Kitchen/KDS, Billing, Reports, Staff management, offline/local-cache behavior
-(tracked with the LAN/offline backend slice — docs/offline-mode.md), push/local notifications,
-and the Windows/Android platform scaffolding itself (see below).
+- **Kitchen display (KDS)** (`lib/features/kitchen/kds_screen.dart`) — a horizontally-scrolling
+  board of KOT "tickets" (`_TicketCard`), oldest first, each item advanceable through
+  NEW → PREPARING → READY → COMPLETED (or CANCELLED at any point before COMPLETED) via
+  `PATCH /kitchen/items/:id/status`; a ticket drops off the board once every item on it is
+  COMPLETED/CANCELLED (`KdsTicket.hasActiveItems`, mirroring the backend's own queue filter — see
+  `KitchenService.listQueue`'s `notIn: ['COMPLETED', 'CANCELLED']` on the server). `Order.status`
+  itself is never touched from here — the backend derives it from item-level progress
+  (`KitchenService.recomputeOrderStatus`); this screen only ever writes kitchen-item status.
+  Ticket headers color-code by elapsed time (green/amber/red at 5/10-minute thresholds — a
+  reasonable default, not a spec-pinned number) and a station filter (`ChoiceChip` row) narrows
+  the board to one `KitchenStation` at a time. **No WebSocket wiring on the Flutter side yet** —
+  unlike the customer PWA's `useOrderUpdates.ts`, this screen keeps the board live with a plain
+  `Timer.periodic` re-fetch every 6 seconds rather than a real-time subscription; adding
+  `socket_io_client` to the staff app is a reasonable follow-up once there's a second screen that
+  would also benefit from it (Billing's live order feed is the next candidate). Update controls
+  are further gated on `kitchen.update` (the tab itself only needs `kitchen.view`) for the same
+  view-only-role reason as Tables management above. New pure-logic tests:
+  `test/features/kitchen/kds_models_test.dart` (9 tests — JSON parsing, `hasActiveItems`, and the
+  `kitchenItemStatusToJson` guard against NEW as an illegal target status).
+
+**Not built yet**: Billing, Reports, Staff management, offline/local-cache behavior (tracked with
+the LAN/offline backend slice — docs/offline-mode.md), push/local notifications, and the
+Windows/Android platform scaffolding itself (see below).
 
 ## Why there's no `android/`, `ios/`, or `windows/` folder here
 
@@ -117,8 +137,8 @@ success). Concretely, nobody has run `flutter pub get`, `flutter analyze`, `flut
 correctness (including several real mistakes caught and fixed during that review — e.g.
 `int.clamp()` returning `num`, not `int`, in `home_shell.dart`, and the two POS bugs described
 above), but that is not a substitute for the analyzer and test runner actually running. The
-widget screens (`PosHomeScreen`, `OrderBuilderScreen`, `TablesManagementScreen`, and everything
-under `lib/features/pos/widgets/`) are the highest-risk code in the app precisely because
+widget screens (`PosHomeScreen`, `OrderBuilderScreen`, `TablesManagementScreen`, `KdsScreen`, and
+everything under `lib/features/pos/widgets/`) are the highest-risk code in the app precisely because
 hand-review cannot simulate the widget tree, layout constraints, or `Tab`/`TabController`
 lifecycle the way `flutter run` or a widget test harness would — treat those as needing the most
 scrutiny on first real run. One specific thing to check first: `tables_management_screen.dart`
@@ -127,16 +147,17 @@ because `pubspec.yaml`'s SDK floor (`>=3.22.0`, no upper bound) includes Flutter
 predate the rename — `value:` should still work as a supported-but-deprecated alias on a newer
 SDK too, but that assumption about Flutter's own deprecation window is exactly the kind of thing
 this sandbox has no compiler to confirm. The test files under `test/core/auth/`,
-`test/core/money/`, and `test/features/pos/`
-(`jwt_decoder_test.dart`, `access_token_claims_test.dart`, `money_test.dart`, `pos_cart_test.dart`)
-have no platform-channel or rendering dependency — `pos_cart_test.dart` exercises
-`PosCartNotifier`'s state transitions and subtotal math directly, without touching any widget —
-and should be the first thing to run once the SDK is available:
+`test/core/money/`, and `test/features/` (`jwt_decoder_test.dart`, `access_token_claims_test.dart`,
+`money_test.dart`, `pos_cart_test.dart`, `kds_models_test.dart`) have no platform-channel or
+rendering dependency — `pos_cart_test.dart` exercises `PosCartNotifier`'s state transitions and
+subtotal math directly, `kds_models_test.dart` exercises `KdsTicket`/`KdsTicketItem` JSON parsing
+and the active-ticket filter, neither touching a widget — and should be the first thing to run
+once the SDK is available:
 
 ```bash
 cd apps/restaurant_app
 flutter pub get
-flutter test test/core test/features/pos
+flutter test test/core test/features
 flutter analyze
 ```
 

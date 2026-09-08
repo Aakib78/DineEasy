@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/auth/access_token_claims.dart';
 import '../../core/auth/auth_session.dart';
 import '../../core/rbac/permissions.dart';
+import '../kitchen/kds_screen.dart';
 import '../pos/pos_home_screen.dart';
 import '../tables/tables_management_screen.dart';
 import 'placeholder_screen.dart';
@@ -45,7 +46,7 @@ final _destinations = <_Destination>[
     label: 'Kitchen',
     icon: Icons.soup_kitchen,
     requiredPermission: Permissions.kitchenView,
-    screen: PlaceholderScreen(title: 'Kitchen Display', icon: Icons.soup_kitchen),
+    screen: KdsScreen(),
   ),
   const _Destination(
     label: 'Billing',
