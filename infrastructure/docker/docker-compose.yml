@@ -1,4 +1,3 @@
-\
 # DineEasy — base compose file (works standalone for a "restaurant PC" prod-like deployment)
 # Usage: docker compose -f infrastructure/docker/docker-compose.yml up -d
 # Combine with docker-compose.dev.yml for local development, or
@@ -71,11 +70,16 @@ services:
     build:
       context: ../../apps/customer_web
       dockerfile: Dockerfile
+      args:
+        # Vite bakes env vars into the static bundle at BUILD time, not runtime — so this has
+        # to be a build arg, not a container `environment:` entry (which would silently do
+        # nothing for a pre-built nginx-served SPA). IMPORTANT: `localhost` only works if
+        # you're testing from the server itself — a diner's phone needs the server's actual
+        # LAN IP here (e.g. http://192.168.1.50:3000/api/v1), set via API_URL in your .env.
+        VITE_API_BASE_URL: ${API_URL:-http://localhost:3000}/api/v1
     restart: unless-stopped
     depends_on:
       - api
-    environment:
-      VITE_API_URL: ${API_URL:-http://localhost:3000}
     ports:
       - "${WEB_PORT:-8080}:80"
     networks:

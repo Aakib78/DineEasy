@@ -14,10 +14,10 @@
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
-    "docker:up": "docker compose -f infrastructure/docker/docker-compose.yml -f infrastructure/docker/docker-compose.dev.yml up -d",
-    "docker:down": "docker compose -f infrastructure/docker/docker-compose.yml -f infrastructure/docker/docker-compose.dev.yml down",
-    "docker:prod": "docker compose -f infrastructure/docker/docker-compose.yml up -d",
-    "docker:test": "docker compose -f infrastructure/docker/docker-compose.yml -f infrastructure/docker/docker-compose.test.yml up -d"
+    "docker:up": "docker compose --env-file .env -f infrastructure/docker/docker-compose.yml -f infrastructure/docker/docker-compose.dev.yml up -d",
+    "docker:down": "docker compose --env-file .env -f infrastructure/docker/docker-compose.yml -f infrastructure/docker/docker-compose.dev.yml down",
+    "docker:prod": "docker compose --env-file .env -f infrastructure/docker/docker-compose.yml up -d",
+    "docker:test": "POSTGRES_PASSWORD=dineeasy_test_only docker compose -f infrastructure/docker/docker-compose.yml -f infrastructure/docker/docker-compose.test.yml up -d"
   },
   "engines": {
     "node": ">=20.0.0"

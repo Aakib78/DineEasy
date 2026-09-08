@@ -32,6 +32,10 @@ services:
     volumes:
       - ../../apps/customer_web:/app
       - /app/node_modules
+    # Vite's dev server (unlike the production build) reads VITE_-prefixed process env vars
+    # directly at startup, so this works here without a build arg — see apps/customer_web/Dockerfile.
+    environment:
+      VITE_API_BASE_URL: http://localhost:${API_PORT:-3000}/api/v1
     command: ["npm", "run", "dev", "--", "--host"]
     ports:
       - "5173:5173"

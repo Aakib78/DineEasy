@@ -21,6 +21,22 @@ This does not affect the running application — the generated `@prisma/client` 
 
 If you're on a restricted network, Docker's build containers may not inherit your proxy settings. Either configure `~/.docker/config.json` `proxies`, or pass `--build-arg HTTP_PROXY=...`/`HTTPS_PROXY=...` matching your environment.
 
+### `docker compose up` / `docker pull` fails with `403 Forbidden` resolving `registry-1.docker.io`
+
+A third member of the same restricted-egress family as the two entries above (this project was built in a sandbox that allowlists the npm/PyPI/crates/Go module registries but not Docker Hub) — the fix is the same: run it from a network that can actually reach Docker Hub. This is why the compose files in this repo were validated here with `docker compose config` (pure YAML/interpolation validation, no image pull) rather than a real `docker compose up`, using a natively `apt`-installed Postgres 16 + Redis instead (both packages *were* reachable via the Ubuntu archive mirrors in that sandbox) to re-confirm the migration and app config independently — see `docs/architecture.md` §15 for exactly what that did and didn't prove. If your network can reach Docker Hub, a plain `docker compose up` should just work; if you hit this specific error, the compose files are not the problem.
+
+### Fixed in this repo: `docker compose up`/`config` used to fail outright
+
+Three real bugs were caught the first time these compose files were actually exercised (previously only read, never run — see the git history around the LAN/offline-validation slice):
+
+1. `infrastructure/docker/docker-compose.yml` had a stray literal `\` as its very first byte (predates a `#` comment on the same intended line), which is invalid YAML — `docker compose` refused to parse the file at all, for every command, unconditionally. Fixed by deleting the stray character.
+2. Running `docker compose` from the repo root with `-f infrastructure/docker/...` does **not** auto-load the root `.env` the way you'd expect — Compose's default project directory (and therefore its default `.env` lookup) follows the directory of the *first* `-f` file, not your current directory, once you pass explicit `-f` flags. `npm run docker:up`/`docker:down`/`docker:prod` now pass `--env-file .env` explicitly rather than relying on the auto-load. If you're running `docker compose` by hand from the repo root instead of via the npm scripts, do the same (`docker compose --env-file .env -f ...`) or you'll hit `POSTGRES_PASSWORD is required` even with a perfectly good `.env` sitting right there.
+3. `docker-compose.test.yml` overriding `POSTGRES_PASSWORD` with a literal value didn't actually satisfy the base file's `${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}` guard — Compose interpolates each file's own variables before merging overlays, so a later file's literal override can't retroactively satisfy an earlier file's required-variable check. `npm run docker:test` now exports `POSTGRES_PASSWORD` directly in the command itself so the base file's interpolation always has something to see.
+
+All three combinations (`docker-compose.yml` alone, `+dev`, `+test`) were re-validated with `docker compose config --quiet` after the fixes (exit code 0, and for the `web` service specifically, confirmed `VITE_API_BASE_URL` actually resolves as a build arg — see the next section).
+
+A fourth issue, found while adding `apps/customer_web/Dockerfile` (it didn't exist until the customer PWA was built — see `docs/customer-web.md` — even though the base compose file already referenced it): the `web` service was setting a container-runtime `environment: VITE_API_URL: ...` entry, which is wrong two ways at once — the app actually reads `VITE_API_BASE_URL` (not `VITE_API_URL`), and Vite bakes `VITE_`-prefixed env vars into the bundle at *build* time, so a runtime `environment:` entry on a pre-built static nginx image does nothing regardless of its name. Fixed by passing it as a `build.args` entry instead (`docker-compose.yml`) and, for the dev target where Vite's own dev server does read runtime env vars, as `environment:` on that override only (`docker-compose.dev.yml`).
+
 ## Runtime
 
 ### Flutter app shows "Can't connect to DineEasy Server"
