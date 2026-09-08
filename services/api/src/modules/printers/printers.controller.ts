@@ -50,7 +50,11 @@ export class PrintersController {
   }
 
   @Patch('jobs/:jobId/status')
-  updateJobStatus(@Param('jobId') jobId: string, @Body() dto: UpdatePrintJobStatusDto) {
-    return this.printersService.updateJobStatus(jobId, dto);
+  updateJobStatus(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('jobId') jobId: string,
+    @Body() dto: UpdatePrintJobStatusDto,
+  ) {
+    return this.printersService.updateJobStatus(requireActiveOutlet(user), jobId, dto);
   }
 }

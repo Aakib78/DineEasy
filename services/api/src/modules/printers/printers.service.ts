@@ -117,9 +117,23 @@ export class PrintersService {
     });
   }
 
-  /** Reported by the print agent. A FAILED job is automatically re-queued up to MAX_ATTEMPTS, then left FAILED for a human to notice. */
-  async updateJobStatus(jobId: string, dto: UpdatePrintJobStatusDto) {
-    const job = await this.prisma.printerJob.findFirst({ where: { id: jobId } });
+  /**
+   * Reported by the print agent. A FAILED job is automatically re-queued up to MAX_ATTEMPTS,
+   * then left FAILED for a human to notice.
+   *
+   * `PrinterJob` carries no `organizationId`/`outletId` of its own (see schema — it only has
+   * `printerId`), so it isn't one of the models the Prisma tenant-guard middleware polices.
+   * That means scoping this write is on us: without the `printer: { outletId }` filter below,
+   * any staff member holding `printers.manage` at *any* outlet in *any* organization could
+   * PATCH the status of a print job belonging to a completely unrelated restaurant, as long as
+   * they had (or guessed) its UUID. Low-likelihood given UUIDs, but a real cross-tenant write
+   * path, and "strict multi-tenant isolation enforced server-side" (spec §3) doesn't carve out
+   * an exception for unguessable IDs — so it's closed explicitly here rather than left to luck.
+   */
+  async updateJobStatus(outletId: string, jobId: string, dto: UpdatePrintJobStatusDto) {
+    const job = await this.prisma.printerJob.findFirst({
+      where: { id: jobId, printer: { outletId } },
+    });
     if (!job) throw new NotFoundDomainError('PrinterJob', jobId);
 
     if (dto.status === 'FAILED') {

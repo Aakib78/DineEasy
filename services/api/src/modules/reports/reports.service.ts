@@ -107,12 +107,13 @@ export class ReportsService {
   }
 }
 
-function resolveRange(range: ReportRangeDto): { from: Date; to: Date } {
+/** Exported for unit testing — pure date logic, no Prisma dependency. */
+export function resolveRange(range: ReportRangeDto): { from: Date; to: Date } {
   const to = range.to ? new Date(range.to) : new Date();
   const from = range.from ? new Date(range.from) : startOfDay(to);
   return { from, to };
 }
 
-function startOfDay(d: Date): Date {
+export function startOfDay(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
 }
