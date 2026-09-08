@@ -1,0 +1,43 @@
+name: dineeasy_staff
+description: >
+  DineEasy staff app (POS, tables, kitchen display, billing, reports) — Android tablets on the
+  counter/floor, Windows for a back-office desktop. Talks to services/api over the restaurant's
+  own LAN; see docs/architecture.md and docs/offline-mode.md for the operating model.
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+  flutter: ">=3.22.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State management — plain (non-code-generated) Riverpod. No build_runner step, so the app
+  # builds with just `flutter pub get`; revisit codegen once the provider graph gets large
+  # enough that hand-written providers become the bigger maintenance cost.
+  flutter_riverpod: ^2.6.1
+
+  # Routing, with auth-aware redirects (see lib/core/routing/app_router.dart).
+  go_router: ^14.6.2
+
+  # HTTP client for services/api. Chosen over `http` for interceptors (auth header injection,
+  # 401 -> refresh-and-retry) and typed error handling — see lib/core/network/api_client.dart.
+  dio: ^5.7.0
+
+  # Access/refresh tokens at rest: OS keychain (Keychain on iOS/macOS, Keystore-backed
+  # EncryptedSharedPreferences on Android, Credential Locker on Windows) rather than plain
+  # SharedPreferences — spec §21's "tokens are bearer credentials, treat them like passwords."
+  flutter_secure_storage: ^9.2.2
+
+  intl: ^0.19.0
+  equatable: ^2.0.5
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true

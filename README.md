@@ -47,15 +47,16 @@ npm run dev:api
 npm run dev:web
 ```
 
-Then run the Flutter app:
+Then run the Flutter app (first time only, generates the platform folders — see `docs/flutter-app.md`):
 
 ```bash
 cd apps/restaurant_app
+flutter create . --platforms=android,windows --org com.dineeasy
 flutter pub get
 flutter run -d windows   # or -d <android-device-id>
 ```
 
-See `docs/local-development.md` for the full walkthrough, and `docs/troubleshooting.md` if something doesn't come up.
+See `docs/local-development.md` for the full walkthrough, `docs/flutter-app.md` for what's implemented in the staff app so far, and `docs/troubleshooting.md` if something doesn't come up.
 
 ## Why DineEasy is different
 
