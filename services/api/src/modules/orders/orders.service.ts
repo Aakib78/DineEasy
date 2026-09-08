@@ -9,6 +9,7 @@ import { TablesService } from '../tables/tables.service';
 import { DiningSessionsService } from '../dining-sessions/dining-sessions.service';
 import { RealtimeGateway } from '../../common/realtime/realtime.gateway';
 import { PrintersService } from '../printers/printers.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { OrderStatus, assertOrderTransition } from '../../common/order/order-state-machine';
 import { CreateOrderDto, CreateOrderItemDto } from './dto/create-order.dto';
 import { AddOrderItemsDto } from './dto/add-order-items.dto';
@@ -51,6 +52,7 @@ export class OrdersService {
     private readonly diningSessionsService: DiningSessionsService,
     private readonly realtime: RealtimeGateway,
     private readonly printersService: PrintersService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   // ---------------------------------------------------------------------
@@ -470,6 +472,20 @@ export class OrdersService {
 
     this.realtime.orderUpdated(outletId, orderId, order.diningSessionId);
     if (toStatus === 'CANCELLED') this.realtime.kitchenQueueUpdated(outletId);
+
+    // `transitionStatus` is the single choke point every order status change passes through
+    // (SYSTEM-driven from KitchenService.recomputeOrderStatus, STAFF-driven from
+    // BillingService/PaymentsService) — the one place to hook "notify someone" without
+    // duplicating this logic per caller. Fire-and-forget: NotificationsService.create never
+    // throws into its caller, and a failed notification must never fail the order transition
+    // that already committed above it.
+    if (toStatus === 'READY') {
+      const label =
+        order.type === 'DINE_IN'
+          ? `${order.table?.name ?? 'A table'}'s order (#${order.orderNumber})`
+          : `Takeaway order #${order.orderNumber}`;
+      void this.notificationsService.notifyOrderReady(organizationId, outletId, orderId, label);
+    }
 
     return this.getById(organizationId, outletId, orderId);
   }

@@ -42,10 +42,11 @@ model Organization {
   updatedAt    DateTime @updatedAt
   deletedAt    DateTime?
 
-  outlets    Outlet[]
-  users      User[]
-  roles      Role[]
-  auditLogs  AuditLog[]
+  outlets       Outlet[]
+  users         User[]
+  roles         Role[]
+  auditLogs     AuditLog[]
+  notifications Notification[]
 
   @@map("organizations")
 }
@@ -83,6 +84,7 @@ model Outlet {
   diningSessions  DiningSession[]
   dailyCounters   OutletDailyCounter[]
   auditLogs       AuditLog[]
+  notifications   Notification[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -112,6 +114,9 @@ model User {
   refreshTokens RefreshToken[]
   orderEvents   OrderEvent[]
   auditLogs     AuditLog[]
+  /// Notifications addressed to this user specifically — see Notification.recipientUserId's
+  /// doc comment for how this differs from an outlet-wide broadcast.
+  notifications Notification[]
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -920,6 +925,61 @@ model AuditLog {
   @@index([organizationId, createdAt])
   @@index([entityType, entityId])
   @@map("audit_logs")
+}
+
+/// v1 has exactly one trigger (an order becoming READY — see OrdersService.transitionStatus,
+/// the single choke point every order status change already passes through regardless of
+/// whether the kitchen or a staff action drove it). More types are a straightforward addition
+/// later — nothing about this model is ORDER_READY-specific — but only what's actually wired
+/// is declared here rather than speculatively pre-declaring types nothing creates yet.
+enum NotificationType {
+  ORDER_READY
+}
+
+/// A persisted, queryable notification — deliberately a *different* concern from
+/// RealtimeGateway's `{type, ids}` WebSocket "refetch hints" (common/realtime/realtime.gateway.ts),
+/// which are ephemeral and never stored. This is the source of truth (an unread count, a
+/// notification inbox, "did anyone see this"); the gateway's `notification.created` event
+/// (added alongside this) is just a hint telling a connected client to go re-fetch
+/// `GET /notifications`, exactly the same pattern as every other refetch hint in this app —
+/// a client that never received the hint is still fully correct on its next poll or app open.
+model Notification {
+  id             String           @id @default(uuid())
+  organizationId String
+  outletId       String
+  type           NotificationType
+  title          String
+  body           String
+
+  /// Null = outlet-wide broadcast, gated by `requiredPermission` below. Non-null = addressed to
+  /// exactly one staff member (e.g. the specific staff member who's about to take the blame if
+  /// this order goes cold — not built as a targeted trigger yet, but the column exists for when
+  /// it is).
+  recipientUserId String?
+
+  /// Only consulted when `recipientUserId` is null. A permission *key string* (mirrors
+  /// `PERMISSIONS.*` — not a foreign key, matching how `PermissionsGuard` itself checks
+  /// permission strings, not row references) — null means every staff member at the outlet,
+  /// regardless of role. `NotificationsService.listForUser` is what actually applies this
+  /// filter; the column itself carries no enforcement on its own.
+  requiredPermission String?
+
+  /// What this notification is about — a plain string pair rather than a Prisma relation,
+  /// mirroring `AuditLog.entityType`/`entityId` exactly, since a notification can point at
+  /// different model types over time (today: always `('Order', <orderId>)`).
+  entityType String?
+  entityId   String?
+
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  outlet       Outlet       @relation(fields: [outletId], references: [id], onDelete: Cascade)
+  recipient    User?        @relation(fields: [recipientUserId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, outletId, recipientUserId, readAt])
+  @@index([entityType, entityId])
+  @@map("notifications")
 }
 
 // =============================================================================

@@ -2,7 +2,7 @@
 
 ## Conventions
 
-- **Base path**: `/api/v1/...` — versioned from day one (spec §32). Every route lives under a resource matching `docs/architecture.md` §13's module list: `/api/v1/auth`, `/api/v1/organizations`, `/api/v1/outlets`, `/api/v1/menu`, `/api/v1/tables`, `/api/v1/dining-sessions`, `/api/v1/orders`, `/api/v1/kitchen`, `/api/v1/billing`, `/api/v1/payments`, `/api/v1/reports`, `/api/v1/staff`, `/api/v1/qr`, `/api/v1/printers`, `/api/v1/system`.
+- **Base path**: `/api/v1/...` — versioned from day one (spec §32). Every route lives under a resource matching `docs/architecture.md` §13's module list: `/api/v1/auth`, `/api/v1/organizations`, `/api/v1/outlets`, `/api/v1/menu`, `/api/v1/tables`, `/api/v1/dining-sessions`, `/api/v1/orders`, `/api/v1/kitchen`, `/api/v1/billing`, `/api/v1/payments`, `/api/v1/reports`, `/api/v1/staff`, `/api/v1/qr`, `/api/v1/printers`, `/api/v1/notifications`, `/api/v1/system`.
 - **Auth**: `Authorization: Bearer <access-token>` for staff routes; a dining-session token (also a bearer JWT, narrower scope) for customer/QR routes. See `docs/authentication.md`.
 - **Validation**: every request body is a `class-validator`-decorated DTO behind a global `ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true })` — unknown fields are rejected, not silently dropped, so a client bug surfaces immediately instead of silently losing data.
 - **Errors**: a consistent JSON shape —

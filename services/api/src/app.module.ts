@@ -34,6 +34,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
 import { RealtimeModule } from './common/realtime/realtime.module';
 import { PrintersModule } from './modules/printers/printers.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -77,7 +78,7 @@ import { ReportsModule } from './modules/reports/reports.module';
     PaymentsModule,
     PrintersModule,
     ReportsModule,
-    // Notifications land in a subsequent slice — see docs/architecture.md §15.
+    NotificationsModule,
   ],
   providers: [
     // Guard order matters: JwtAuthGuard runs first (populates request.user or allows

@@ -84,6 +84,18 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     this.server.to(`outlet:${outletId}`).emit('table.updated', { tableId });
   }
 
+  /**
+   * A new row exists in the `Notification` table for someone at this outlet — go refetch
+   * `GET /notifications`. Broadcast to the whole `outlet:<outletId>` room rather than a
+   * per-recipient room (there is no `user:<userId>` room in v1 — see this file's class doc
+   * comment for the two rooms that do exist) since a client that refetches and finds nothing
+   * newly visible to it is harmless, just one wasted request; `NotificationsService` is what
+   * actually decides who can see which row, this is only ever a hint to go check.
+   */
+  notificationCreated(outletId: string): void {
+    this.server.to(`outlet:${outletId}`).emit('notification.created', {});
+  }
+
   // ---------------------------------------------------------------------
 
   private extractToken(client: Socket): string | undefined {
