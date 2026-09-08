@@ -1,0 +1,37 @@
+# DineEasy — development overrides.
+# Usage: docker compose -f infrastructure/docker/docker-compose.yml -f infrastructure/docker/docker-compose.dev.yml up -d
+#
+# In day-to-day dev, most people run `npm run dev:api` / `npm run dev:web` on the host
+# instead of dockerizing api/web, and only use this file for postgres+redis. This override
+# is provided for parity testing ("does it work fully dockerized") and onboarding.
+
+services:
+  postgres:
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_PASSWORD: dineeasy_dev_only
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  api:
+    build:
+      target: development
+    volumes:
+      - ../../services/api:/app
+      - /app/node_modules
+    environment:
+      NODE_ENV: development
+    command: ["npm", "run", "start:dev"]
+
+  web:
+    build:
+      target: development
+    volumes:
+      - ../../apps/customer_web:/app
+      - /app/node_modules
+    command: ["npm", "run", "dev", "--", "--host"]
+    ports:
+      - "5173:5173"

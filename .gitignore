@@ -1,0 +1,28 @@
+node_modules/
+dist/
+build/
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+coverage/
+.turbo/
+.next/
+
+# Flutter
+apps/restaurant_app/.dart_tool/
+apps/restaurant_app/.flutter-plugins
+apps/restaurant_app/.flutter-plugins-dependencies
+apps/restaurant_app/.packages
+apps/restaurant_app/build/
+apps/restaurant_app/ios/Pods/
+apps/restaurant_app/android/.gradle/
+
+# Prisma
+services/api/prisma/*.db
+
+# IDE
+.vscode/*
+!.vscode/extensions.json
+.idea/

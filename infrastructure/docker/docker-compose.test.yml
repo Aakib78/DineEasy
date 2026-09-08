@@ -1,0 +1,34 @@
+# DineEasy — automated test environment (isolated ports/volumes so it can run
+# alongside a dev stack, e.g. in CI or on a developer machine).
+# Usage: docker compose -f infrastructure/docker/docker-compose.yml -f infrastructure/docker/docker-compose.test.yml up -d postgres redis
+
+name: dineeasy-test
+
+services:
+  postgres:
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: dineeasy_test
+      POSTGRES_PASSWORD: dineeasy_test_only
+    volumes:
+      - dineeasy_test_postgres_data:/var/lib/postgresql/data
+
+  redis:
+    ports:
+      - "6380:6379"
+    volumes:
+      - dineeasy_test_redis_data:/data
+
+  api:
+    profiles: ["full"]
+    environment:
+      DATABASE_URL: postgresql://dineeasy:dineeasy_test_only@postgres:5432/dineeasy_test?schema=public
+      NODE_ENV: test
+
+  web:
+    profiles: ["full"]
+
+volumes:
+  dineeasy_test_postgres_data:
+  dineeasy_test_redis_data:

@@ -1,0 +1,25 @@
+{
+  "name": "dineeasy",
+  "private": true,
+  "version": "0.1.0",
+  "description": "DineEasy — Run your restaurant, effortlessly. Monorepo root.",
+  "workspaces": [
+    "services/api",
+    "apps/customer_web",
+    "packages/shared_types"
+  ],
+  "scripts": {
+    "dev:api": "npm run start:dev --workspace services/api",
+    "dev:web": "npm run dev --workspace apps/customer_web",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "docker:up": "docker compose -f infrastructure/docker/docker-compose.yml -f infrastructure/docker/docker-compose.dev.yml up -d",
+    "docker:down": "docker compose -f infrastructure/docker/docker-compose.yml -f infrastructure/docker/docker-compose.dev.yml down",
+    "docker:prod": "docker compose -f infrastructure/docker/docker-compose.yml up -d",
+    "docker:test": "docker compose -f infrastructure/docker/docker-compose.yml -f infrastructure/docker/docker-compose.test.yml up -d"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
