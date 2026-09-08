@@ -16,7 +16,12 @@ export class TaxService {
     private readonly auditLog: AuditLogService,
   ) {}
 
-  async create(organizationId: string, outletId: string, dto: CreateTaxGroupDto, actorUserId: string) {
+  async create(
+    organizationId: string,
+    outletId: string,
+    dto: CreateTaxGroupDto,
+    actorUserId: string,
+  ) {
     const taxGroup = await this.prisma.$transaction(async (tx) => {
       const created = await tx.taxGroup.create({ data: { outletId, name: dto.name } });
       await tx.taxGroupComponent.createMany({

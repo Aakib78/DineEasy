@@ -15,7 +15,12 @@ export class ModifiersController {
   @Post()
   @RequirePermission(PERMISSIONS.MENU_EDIT)
   create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateModifierGroupDto) {
-    return this.modifiersService.create(user.organizationId, requireActiveOutlet(user), dto, user.userId);
+    return this.modifiersService.create(
+      user.organizationId,
+      requireActiveOutlet(user),
+      dto,
+      user.userId,
+    );
   }
 
   @Get()
@@ -32,7 +37,17 @@ export class ModifiersController {
 
   @Patch(':id')
   @RequirePermission(PERMISSIONS.MENU_EDIT)
-  update(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpdateModifierGroupDto) {
-    return this.modifiersService.update(user.organizationId, requireActiveOutlet(user), id, dto, user.userId);
+  update(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateModifierGroupDto,
+  ) {
+    return this.modifiersService.update(
+      user.organizationId,
+      requireActiveOutlet(user),
+      id,
+      dto,
+      user.userId,
+    );
   }
 }

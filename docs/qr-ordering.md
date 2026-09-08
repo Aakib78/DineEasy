@@ -14,9 +14,11 @@ Regenerating a table's QR (Admin → Tables → Regenerate QR) invalidates the o
 ## Guest flow
 
 ```
-Scan QR → GET /q/:token → resolve session → GET menu → build cart (client-side) →
-POST /api/v1/orders (source=QR, diningSessionId, guestToken) → poll/subscribe order status →
-pay at counter, or online payment (when configured) → order tracking shows COMPLETED
+Scan QR → POST /api/v1/qr/:token/resolve → dining-session bearer token → GET /api/v1/qr/menu →
+build cart (client-side) → POST /api/v1/qr/orders (Authorization: Bearer <session token>;
+table/session/guestToken all come from that token, never the request body) →
+poll/subscribe order status → pay at counter, or online payment (when configured) →
+order tracking shows COMPLETED
 ```
 
 The cart itself lives client-side (in memory / `localStorage`) until "Place order" — DineEasy doesn't create a `DRAFT` order for every idle cart, only once the guest actually places it, to avoid cluttering the POS with abandoned orders.
@@ -31,7 +33,7 @@ The customer web app reads menu items through the same `isAvailable`/`isActive` 
 
 ## Order tracking
 
-`GET /api/v1/orders/:id` (scoped to the dining session token) plus a WebSocket subscription to that order's room gives live status updates (`docs/architecture.md` §8) without polling, while still falling back to poll-on-reconnect so a flaky guest Wi-Fi connection never leaves the tracking screen stuck.
+`GET /api/v1/qr/orders/:id` (`OrdersGuestController`, gated by the dining-session token — a guest can only ever fetch an order belonging to their own session, checked server-side against `Order.diningSessionId`) plus a WebSocket subscription to that order's room (not yet built — see docs/architecture.md §15) will give live status updates (`docs/architecture.md` §8) without polling, falling back to poll-on-reconnect so a flaky guest Wi-Fi connection never leaves the tracking screen stuck.
 
 ## What's explicitly out of scope for v1
 

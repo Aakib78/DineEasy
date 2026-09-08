@@ -16,7 +16,12 @@ export class TablesController {
   @Post('floors')
   @RequirePermission(PERMISSIONS.TABLES_MANAGE)
   createFloor(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateFloorDto) {
-    return this.tablesService.createFloor(user.organizationId, requireActiveOutlet(user), dto, user.userId);
+    return this.tablesService.createFloor(
+      user.organizationId,
+      requireActiveOutlet(user),
+      dto,
+      user.userId,
+    );
   }
 
   @Get('floors')
@@ -28,7 +33,12 @@ export class TablesController {
   @Post('tables')
   @RequirePermission(PERMISSIONS.TABLES_MANAGE)
   createTable(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateTableDto) {
-    return this.tablesService.createTable(user.organizationId, requireActiveOutlet(user), dto, user.userId);
+    return this.tablesService.createTable(
+      user.organizationId,
+      requireActiveOutlet(user),
+      dto,
+      user.userId,
+    );
   }
 
   @Get('tables')
@@ -45,13 +55,28 @@ export class TablesController {
 
   @Patch('tables/:id')
   @RequirePermission(PERMISSIONS.TABLES_MANAGE)
-  updateTable(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpdateTableDto) {
-    return this.tablesService.updateTable(user.organizationId, requireActiveOutlet(user), id, dto, user.userId);
+  updateTable(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateTableDto,
+  ) {
+    return this.tablesService.updateTable(
+      user.organizationId,
+      requireActiveOutlet(user),
+      id,
+      dto,
+      user.userId,
+    );
   }
 
   @Post('tables/:id/qr/regenerate')
   @RequirePermission(PERMISSIONS.TABLES_MANAGE)
   regenerateQr(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.tablesService.regenerateQrCode(user.organizationId, requireActiveOutlet(user), id, user.userId);
+    return this.tablesService.regenerateQrCode(
+      user.organizationId,
+      requireActiveOutlet(user),
+      id,
+      user.userId,
+    );
   }
 }

@@ -27,7 +27,9 @@ export class GuestTokenService {
     try {
       return jwt.verify(token, this.secret) as unknown as GuestSessionPayload;
     } catch {
-      throw new UnauthenticatedDomainError('Your session has expired — please scan the table QR code again.');
+      throw new UnauthenticatedDomainError(
+        'Your session has expired — please scan the table QR code again.',
+      );
     }
   }
 }

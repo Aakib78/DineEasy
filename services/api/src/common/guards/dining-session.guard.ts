@@ -17,7 +17,9 @@ export class DiningSessionGuard implements CanActivate {
     const authHeader: string | undefined = request.headers.authorization;
 
     if (!authHeader?.startsWith('Bearer ')) {
-      throw new UnauthenticatedDomainError('Missing dining session token — please scan the table QR code.');
+      throw new UnauthenticatedDomainError(
+        'Missing dining session token — please scan the table QR code.',
+      );
     }
 
     const token = authHeader.slice('Bearer '.length);

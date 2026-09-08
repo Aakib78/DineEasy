@@ -18,7 +18,12 @@ export class TablesService {
   // Floors
   // ---------------------------------------------------------------------
 
-  async createFloor(organizationId: string, outletId: string, dto: CreateFloorDto, actorUserId: string) {
+  async createFloor(
+    organizationId: string,
+    outletId: string,
+    dto: CreateFloorDto,
+    actorUserId: string,
+  ) {
     const floor = await this.prisma.floor.create({
       data: { outletId, name: dto.name, displayOrder: dto.displayOrder ?? 0 },
     });
@@ -45,10 +50,19 @@ export class TablesService {
   /** Includes the current open dining session (if any) so the POS floor view can render occupancy at a glance. */
   private readonly TABLE_INCLUDE = {
     qrCode: true,
-    diningSessions: { where: { status: 'OPEN' as const }, take: 1, orderBy: { startedAt: 'desc' as const } },
+    diningSessions: {
+      where: { status: 'OPEN' as const },
+      take: 1,
+      orderBy: { startedAt: 'desc' as const },
+    },
   };
 
-  async createTable(organizationId: string, outletId: string, dto: CreateTableDto, actorUserId: string) {
+  async createTable(
+    organizationId: string,
+    outletId: string,
+    dto: CreateTableDto,
+    actorUserId: string,
+  ) {
     const floor = await this.prisma.floor.findFirst({ where: { outletId, id: dto.floorId } });
     if (!floor) throw new NotFoundDomainError('Floor', dto.floorId);
 
@@ -96,7 +110,13 @@ export class TablesService {
     return table;
   }
 
-  async updateTable(organizationId: string, outletId: string, id: string, dto: UpdateTableDto, actorUserId: string) {
+  async updateTable(
+    organizationId: string,
+    outletId: string,
+    id: string,
+    dto: UpdateTableDto,
+    actorUserId: string,
+  ) {
     const before = await this.getTableById(outletId, id);
 
     await this.prisma.restaurantTable.updateMany({ where: { outletId, id }, data: dto });
@@ -125,7 +145,12 @@ export class TablesService {
    * around) is safe: any dining session already open on this table stays open regardless.
    * See docs/qr-ordering.md.
    */
-  async regenerateQrCode(organizationId: string, outletId: string, tableId: string, actorUserId: string) {
+  async regenerateQrCode(
+    organizationId: string,
+    outletId: string,
+    tableId: string,
+    actorUserId: string,
+  ) {
     await this.getTableById(outletId, tableId); // ownership check
 
     const newQrCode = await this.prisma.tableQrCode.update({

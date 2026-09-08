@@ -16,7 +16,12 @@ export class ModifiersService {
     private readonly auditLog: AuditLogService,
   ) {}
 
-  async create(organizationId: string, outletId: string, dto: CreateModifierGroupDto, actorUserId: string) {
+  async create(
+    organizationId: string,
+    outletId: string,
+    dto: CreateModifierGroupDto,
+    actorUserId: string,
+  ) {
     const group = await this.prisma.$transaction(async (tx) => {
       const created = await tx.modifierGroup.create({
         data: {
@@ -68,7 +73,13 @@ export class ModifiersService {
     return group;
   }
 
-  async update(organizationId: string, outletId: string, id: string, dto: UpdateModifierGroupDto, actorUserId: string) {
+  async update(
+    organizationId: string,
+    outletId: string,
+    id: string,
+    dto: UpdateModifierGroupDto,
+    actorUserId: string,
+  ) {
     const before = await this.getById(outletId, id);
 
     await this.prisma.modifierGroup.updateMany({ where: { outletId, id }, data: dto });

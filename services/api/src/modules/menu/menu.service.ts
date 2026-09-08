@@ -63,10 +63,20 @@ export class MenuService {
   // Categories
   // ---------------------------------------------------------------------
 
-  async createCategory(organizationId: string, outletId: string, dto: CreateCategoryDto, actorUserId: string) {
+  async createCategory(
+    organizationId: string,
+    outletId: string,
+    dto: CreateCategoryDto,
+    actorUserId: string,
+  ) {
     const menu = await this.getOrCreateDefaultMenu(outletId);
     const category = await this.prisma.menuCategory.create({
-      data: { menuId: menu.id, name: dto.name, description: dto.description, displayOrder: dto.displayOrder ?? 0 },
+      data: {
+        menuId: menu.id,
+        name: dto.name,
+        description: dto.description,
+        displayOrder: dto.displayOrder ?? 0,
+      },
     });
 
     await this.auditLog.record({
@@ -82,9 +92,18 @@ export class MenuService {
     return category;
   }
 
-  async updateCategory(organizationId: string, outletId: string, id: string, dto: UpdateCategoryDto, actorUserId: string) {
+  async updateCategory(
+    organizationId: string,
+    outletId: string,
+    id: string,
+    dto: UpdateCategoryDto,
+    actorUserId: string,
+  ) {
     const category = await this.findCategoryOrThrow(outletId, id);
-    const updated = await this.prisma.menuCategory.update({ where: { id: category.id }, data: dto });
+    const updated = await this.prisma.menuCategory.update({
+      where: { id: category.id },
+      data: dto,
+    });
 
     await this.auditLog.record({
       organizationId,
@@ -111,7 +130,12 @@ export class MenuService {
   // Items
   // ---------------------------------------------------------------------
 
-  async createItem(organizationId: string, outletId: string, dto: CreateMenuItemDto, actorUserId: string) {
+  async createItem(
+    organizationId: string,
+    outletId: string,
+    dto: CreateMenuItemDto,
+    actorUserId: string,
+  ) {
     await this.findCategoryOrThrow(outletId, dto.categoryId);
 
     const item = await this.prisma.$transaction(async (tx) => {
@@ -176,7 +200,13 @@ export class MenuService {
     return item;
   }
 
-  async updateItem(organizationId: string, outletId: string, id: string, dto: UpdateMenuItemDto, actorUserId: string) {
+  async updateItem(
+    organizationId: string,
+    outletId: string,
+    id: string,
+    dto: UpdateMenuItemDto,
+    actorUserId: string,
+  ) {
     const before = await this.getItemById(outletId, id);
 
     await this.prisma.$transaction(async (tx) => {
@@ -187,7 +217,11 @@ export class MenuService {
       if (modifierGroupIds) {
         await tx.menuItemModifierGroup.deleteMany({ where: { menuItemId: id } });
         await tx.menuItemModifierGroup.createMany({
-          data: modifierGroupIds.map((modifierGroupId, i) => ({ menuItemId: id, modifierGroupId, displayOrder: i })),
+          data: modifierGroupIds.map((modifierGroupId, i) => ({
+            menuItemId: id,
+            modifierGroupId,
+            displayOrder: i,
+          })),
         });
       }
     });
@@ -200,7 +234,10 @@ export class MenuService {
       actorUserId,
       // Price changes are a named example in spec §23 — flag them distinctly for easier
       // audit-log scanning even though the row shape is the same as any other item update.
-      action: before.basePrice.toString() !== after.basePrice.toString() ? 'menu_item.price_changed' : 'menu_item.updated',
+      action:
+        before.basePrice.toString() !== after.basePrice.toString()
+          ? 'menu_item.price_changed'
+          : 'menu_item.updated',
       entityType: 'MenuItem',
       entityId: id,
       previousState: before,
@@ -214,11 +251,22 @@ export class MenuService {
   // Variants
   // ---------------------------------------------------------------------
 
-  async addVariant(organizationId: string, outletId: string, menuItemId: string, dto: UpsertVariantDto, actorUserId: string) {
+  async addVariant(
+    organizationId: string,
+    outletId: string,
+    menuItemId: string,
+    dto: UpsertVariantDto,
+    actorUserId: string,
+  ) {
     await this.getItemById(outletId, menuItemId); // ownership check
 
     const variant = await this.prisma.menuItemVariant.create({
-      data: { menuItemId, name: dto.name, priceOverride: dto.priceOverride, isDefault: dto.isDefault ?? false },
+      data: {
+        menuItemId,
+        name: dto.name,
+        priceOverride: dto.priceOverride,
+        isDefault: dto.isDefault ?? false,
+      },
     });
 
     await this.auditLog.record({

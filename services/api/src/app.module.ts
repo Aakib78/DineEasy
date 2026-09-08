@@ -26,6 +26,11 @@ import { MenuModule } from './modules/menu/menu.module';
 import { TablesModule } from './modules/tables/tables.module';
 import { DiningSessionsModule } from './modules/dining-sessions/dining-sessions.module';
 import { QrModule } from './modules/qr/qr.module';
+import { DailyCounterModule } from './common/counters/daily-counter.module';
+import { OrdersModule } from './modules/orders/orders.module';
+import { KitchenModule } from './modules/kitchen/kitchen.module';
+import { BillingModule } from './modules/billing/billing.module';
+import { PaymentsModule } from './modules/payments/payments.module';
 
 @Module({
   imports: [
@@ -61,8 +66,13 @@ import { QrModule } from './modules/qr/qr.module';
     TablesModule,
     DiningSessionsModule,
     QrModule,
-    // Orders, Kitchen, Billing, Payments, Printers, Reports, Notifications modules land in
-    // subsequent slices — see docs/architecture.md §15.
+    DailyCounterModule,
+    OrdersModule,
+    KitchenModule,
+    BillingModule,
+    PaymentsModule,
+    // Printers, Reports, Notifications modules land in subsequent slices — see
+    // docs/architecture.md §15.
   ],
   providers: [
     // Guard order matters: JwtAuthGuard runs first (populates request.user or allows
