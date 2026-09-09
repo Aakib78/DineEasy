@@ -84,8 +84,11 @@ host stand.
 - **Printer job history/health** (`PrinterJobsScreen.tsx`, `/printers/:printerId/jobs`, reached by
   tapping a printer row): per-printer queue depth, recent-failure count, and job-by-job status —
   `GET /printers/:id/jobs` existed with no UI consumer until now. `apps/restaurant_app` has the
-  same screen (`printer_jobs_screen.dart`). Read-only (no retry/cancel), last 50 jobs only (the
-  endpoint has no pagination). See docs/printing.md's "Operator visibility" section for the full
+  same screen (`printer_jobs_screen.dart`). A `FAILED` row now has a "Retry" button
+  (`printersApi.retryJob`, backed by new `POST /printers/jobs/:jobId/retry`) that re-queues it
+  with a fresh attempts budget — still no way to *cancel* a job (no `CANCELLED` value in the
+  `PrinterJobStatus` enum). Last 50 jobs only (the endpoint has no pagination). See
+  docs/printing.md's "Operator visibility" section for the full
   detail, including how a stuck `QUEUED` job (not just `FAILED` ones) is flagged as a likely
   agent-down signal.
 - **Discount and refund cards** (`orders.discount`/`payments.refund`-gated, both on

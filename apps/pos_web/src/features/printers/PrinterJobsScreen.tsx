@@ -62,6 +62,10 @@ export function PrinterJobsScreen() {
   const [printer, setPrinter] = useState<Printer | null>(null);
   const [jobs, setJobs] = useState<PrinterJob[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Keyed by job id so retrying one row doesn't disable/hide errors on the others — a stuck
+  // printer often has several FAILED jobs at once and staff may want to retry them one at a time.
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [retryErrors, setRetryErrors] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -83,6 +87,28 @@ export function PrinterJobsScreen() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const retryJob = useCallback(
+    async (jobId: string) => {
+      setRetryingId(jobId);
+      setRetryErrors((prev) => {
+        const { [jobId]: _discard, ...rest } = prev;
+        return rest;
+      });
+      try {
+        await printersApi.retryJob(jobId);
+        await load();
+      } catch (err) {
+        setRetryErrors((prev) => ({
+          ...prev,
+          [jobId]: err instanceof ApiError ? err.message : 'Could not retry this job.',
+        }));
+      } finally {
+        setRetryingId(null);
+      }
+    },
+    [load],
+  );
 
   if (!canManage) {
     return (
@@ -121,8 +147,9 @@ export function PrinterJobsScreen() {
       <h1>{printer ? printer.name : 'Printer'} — job history</h1>
       <p className="printers-screen__hint">
         The last {jobs.length} job{jobs.length === 1 ? '' : 's'} sent to this printer, newest first.
-        This is a read-only view of what <code>services/print-agent</code> has attempted — it
-        doesn't retry or cancel anything from here.
+        This is a view of what <code>services/print-agent</code> has attempted — a{' '}
+        <strong>Failed</strong> job can be retried from here; there's still no way to cancel a
+        queued one.
       </p>
 
       <div className="printer-jobs-screen__summary">
@@ -165,10 +192,24 @@ export function PrinterJobsScreen() {
                     {isStaleQueued && (
                       <div className="printer-jobs-screen__stale-warning">Stuck — no response from the agent yet</div>
                     )}
+                    {retryErrors[job.id] && (
+                      <div className="printer-jobs-screen__job-error">{retryErrors[job.id]}</div>
+                    )}
                   </div>
-                  <span className={`printer-job-status printer-job-status--${job.status.toLowerCase()}`}>
-                    {STATUS_LABELS[job.status]}
-                  </span>
+                  <div className="printer-jobs-screen__job-actions">
+                    <span className={`printer-job-status printer-job-status--${job.status.toLowerCase()}`}>
+                      {STATUS_LABELS[job.status]}
+                    </span>
+                    {job.status === 'FAILED' && (
+                      <button
+                        className="secondary-button secondary-button--compact"
+                        disabled={retryingId === job.id}
+                        onClick={() => void retryJob(job.id)}
+                      >
+                        {retryingId === job.id ? 'Retrying…' : 'Retry'}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             );

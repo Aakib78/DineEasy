@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/network/api_exception.dart';
 import 'data/printers_models.dart';
 import 'state/printers_providers.dart';
 
@@ -93,7 +94,7 @@ class PrinterJobsScreen extends ConsumerWidget {
               ),
             ],
           ),
-          data: (jobs) => _JobsList(jobs: jobs),
+          data: (jobs) => _JobsList(jobs: jobs, printerId: printerId),
         ),
       ),
     );
@@ -101,9 +102,10 @@ class PrinterJobsScreen extends ConsumerWidget {
 }
 
 class _JobsList extends StatelessWidget {
-  const _JobsList({required this.jobs});
+  const _JobsList({required this.jobs, required this.printerId});
 
   final List<PrinterJob> jobs;
+  final String printerId;
 
   @override
   Widget build(BuildContext context) {
@@ -117,8 +119,8 @@ class _JobsList extends StatelessWidget {
       children: [
         Text(
           'The last ${jobs.length} job${jobs.length == 1 ? '' : 's'} sent to this printer, newest '
-          "first. This is a read-only view of what services/print-agent has attempted — it "
-          "doesn't retry or cancel anything from here.",
+          'first. This is a view of what services/print-agent has attempted — a Failed job can '
+          "be retried from here; there's still no way to cancel a queued one.",
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
             color: Theme.of(context).colorScheme.outline,
           ),
@@ -160,7 +162,7 @@ class _JobsList extends StatelessWidget {
             child: Center(child: Text('No jobs have been sent to this printer yet.')),
           )
         else
-          for (final job in jobs) _JobTile(job: job),
+          for (final job in jobs) _JobTile(job: job, printerId: printerId),
       ],
     );
   }
@@ -188,13 +190,44 @@ class _StatCard extends StatelessWidget {
   }
 }
 
-class _JobTile extends StatelessWidget {
-  const _JobTile({required this.job});
+class _JobTile extends ConsumerStatefulWidget {
+  const _JobTile({required this.job, required this.printerId});
 
   final PrinterJob job;
+  final String printerId;
+
+  @override
+  ConsumerState<_JobTile> createState() => _JobTileState();
+}
+
+class _JobTileState extends ConsumerState<_JobTile> {
+  bool _retrying = false;
+  String? _retryError;
+
+  Future<void> _retry() async {
+    setState(() {
+      _retrying = true;
+      _retryError = null;
+    });
+
+    try {
+      await ref.read(printersRepositoryProvider).retryJob(widget.job.id);
+      ref.invalidate(printerJobsProvider(widget.printerId));
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Job re-queued — the print agent will pick it up shortly.')));
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _retryError = e.message);
+    } finally {
+      if (mounted) setState(() => _retrying = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final job = widget.job;
     final isStaleQueued =
         job.status == PrinterJobStatus.queued &&
         DateTime.now().difference(job.createdAt) >= _staleQueuedThreshold;
@@ -219,19 +252,42 @@ class _JobTile extends StatelessWidget {
                 'Stuck — no response from the agent yet',
                 style: TextStyle(color: Colors.orange.shade800),
               ),
+            if (_retryError != null)
+              Text(
+                _retryError!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
           ],
         ),
-        isThreeLine: job.lastError != null || isStaleQueued,
-        trailing: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: _statusColor(context, job.status).withOpacity(0.12),
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Text(
-            _statusLabel(job.status),
-            style: TextStyle(color: _statusColor(context, job.status), fontWeight: FontWeight.w600, fontSize: 12),
-          ),
+        isThreeLine: job.lastError != null || isStaleQueued || _retryError != null,
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: _statusColor(context, job.status).withOpacity(0.12),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                _statusLabel(job.status),
+                style: TextStyle(color: _statusColor(context, job.status), fontWeight: FontWeight.w600, fontSize: 12),
+              ),
+            ),
+            if (job.status == PrinterJobStatus.failed) ...[
+              const SizedBox(height: 6),
+              SizedBox(
+                height: 28,
+                child: OutlinedButton(
+                  style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10)),
+                  onPressed: _retrying ? null : _retry,
+                  child: Text(_retrying ? 'Retrying…' : 'Retry', style: const TextStyle(fontSize: 12)),
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     );

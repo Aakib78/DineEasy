@@ -60,4 +60,20 @@ class PrintersRepository {
       throw ApiException.fromDioException(e);
     }
   }
+
+  /// Staff-initiated retry for a job stuck `FAILED` after exhausting the print agent's automatic
+  /// retries — resets it to a fresh `QUEUED` state so the agent's next poll picks it back up.
+  /// Only legal on a `FAILED` job; the backend 400s (surfaced as `ApiException`) otherwise. See
+  /// `PrintersService.retryJob`'s doc comment on the backend for the full reasoning — this used
+  /// to be a database-only fix, this screen was read-only until now.
+  Future<PrinterJob> retryJob(String jobId) async {
+    try {
+      final response = await _apiClient.dio.post<Map<String, dynamic>>(
+        '/printers/jobs/$jobId/retry',
+      );
+      return PrinterJob.fromJson(response.data!);
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
 }

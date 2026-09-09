@@ -367,6 +367,24 @@ Kitchen/KDS, Billing, Reports) builds on top of, not those features themselves:
   Flutter/Dart SDK here; the backend changes were verified with `tsc --noEmit` (unchanged) and
   eslint (clean).
 
+- **Printer job retry** (`printer_jobs_screen.dart`'s `_JobTile`, plus a new
+  `PrintersRepository.retryJob`): the job-history view above (`printer_jobs_screen.dart`) was
+  read-only until now — a job stuck `FAILED` after the print agent's automatic 3-attempt retry
+  used to need a direct database edit to move again. New `POST /printers/jobs/:jobId/retry`
+  (`PrintersService.retryJob`) resets it to a fresh `{status: QUEUED, attempts: 0,
+  lastError: null}` and 400s if the job isn't currently `FAILED` (retrying an already-`QUEUED`,
+  `SENT`, or `ACKED` job isn't meaningful). Each `FAILED` row now shows a "Retry" button
+  (`_JobTileState`, converted from `_JobTile`'s prior `StatelessWidget` to hold its own
+  loading/error state, same `try`/`on ApiException`/`finally` shape as
+  `_EditTableSheetState._regenerateQr` in `tables_management_screen.dart`) that invalidates
+  `printerJobsProvider` on success and surfaces the backend's block message inline on failure
+  rather than a generic error. Mirrors the identical addition to
+  `apps/pos_web/src/features/printers/PrinterJobsScreen.tsx`. Deliberately retry-only, not
+  cancel — no `CANCELLED` value exists in the `PrinterJobStatus` enum, and adding one is a schema
+  migration this sandbox can't verify (`prisma migrate`/`generate` aren't runnable here). Not yet
+  verified in this environment — no Flutter/Dart SDK here; the backend addition was verified with
+  `tsc --noEmit` (unchanged) and eslint (clean).
+
 **Not built yet**: offline/local-cache behavior (tracked with the LAN/offline backend slice —
 docs/offline-mode.md), real OS-level push/local notifications (the in-app inbox above is the
 step before that — it's a poll-driven bell, not a system notification), and the
