@@ -20,6 +20,7 @@ import { CreateOrderDto, CreateOrderItemDto } from './dto/create-order.dto';
 import { AddOrderItemsDto } from './dto/add-order-items.dto';
 import { ApplyDiscountDto } from './dto/apply-discount.dto';
 import { computeDiscountAmount, computeOrderTotals, priceOrderItem } from './order-pricing.util';
+import { startOfDay } from '../reports/reports.service';
 
 type OrderSource = 'POS' | 'WAITER' | 'QR';
 type OrderActorType = 'STAFF' | 'SYSTEM' | 'CUSTOMER';
@@ -541,22 +542,26 @@ export class OrdersService {
    * moment anyone navigated away — the order's `Print bill` button still worked, nothing there
    * broke, there was just no way back to it to press it (a cashier who paid, then hit "Back to
    * Billing" before printing, had no way to get back for a reprint). This is what closes that
-   * gap: `Billing`'s screen in both apps now shows a "Recently completed" list alongside the
-   * active one, sourced from here, each row still linking to the same detail screen.
+   * gap: Billing in both apps now has a "Completed" tab alongside "Incomplete" (the old flat
+   * list, unchanged), sourced from here, each row still linking to the same detail screen.
    *
-   * Scoped to today (outlet-local midnight to now) rather than all-time — an unbounded
-   * completed-orders list would only grow, and "reprint from 3 weeks ago" isn't a case either
-   * app's UI is trying to solve (that's what `docs/reports.md`'s order history, once built, is
-   * for). `since` is exposed as a parameter purely so callers/tests aren't locked to wall-clock
-   * "now" — both controllers below always pass today's outlet-local start of day.
+   * `date` is a single calendar day — any `Date` whose *day* (in UTC; see `startOfDay`) is the
+   * one to list, not a datetime range — matching the Completed tab's date-picker filter in both
+   * apps. Deliberately one day at a time rather than an unbounded/all-time query: an unbounded
+   * completed-orders list would only grow forever, and "every completed order ever" isn't what
+   * either app's UI is offering (that's what `docs/reports.md`'s order history, once built, is
+   * for) — this is a day-by-day lookup for reprinting a receipt or checking a specific day's
+   * business, not a report.
    */
-  async listCompletedForOutlet(organizationId: string, outletId: string, since: Date) {
+  async listCompletedForOutlet(organizationId: string, outletId: string, date: Date) {
+    const from = startOfDay(date);
+    const to = new Date(from.getTime() + 24 * 60 * 60 * 1000);
     return this.prisma.order.findMany({
       where: {
         organizationId,
         outletId,
         status: 'COMPLETED',
-        updatedAt: { gte: since },
+        updatedAt: { gte: from, lt: to },
       },
       include: ORDER_INCLUDE,
       orderBy: { updatedAt: 'desc' },

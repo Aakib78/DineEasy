@@ -41,10 +41,12 @@ export const menuApi = {
 
 export const ordersApi = {
   listActive: () => apiRequest<Order[]>('/orders'),
-  // Today's COMPLETED orders — see OrdersService.listCompletedForOutlet's doc comment for why
-  // this exists: it's what makes a "Print bill" reprint reachable again after a cashier
-  // navigates away from an order post-payment, once it's dropped off the active board.
-  listCompleted: () => apiRequest<Order[]>('/orders/completed'),
+  // COMPLETED orders for one calendar day — see OrdersService.listCompletedForOutlet's doc
+  // comment for why this exists: it's what makes a "Print bill" reprint reachable again after a
+  // cashier navigates away from an order post-payment, once it's dropped off the active board.
+  // `date` is "YYYY-MM-DD"; omitted defaults to today server-side.
+  listCompleted: (date?: string) =>
+    apiRequest<Order[]>(`/orders/completed${date ? `?date=${date}` : ''}`),
   getById: (orderId: string) => apiRequest<Order>(`/orders/${orderId}`),
 
   createOrder: (params: {
