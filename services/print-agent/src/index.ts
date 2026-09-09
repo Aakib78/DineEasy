@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { DineEasyApiClient, PrinterRecord } from './api-client';
 import { loadConfigFromEnv } from './config';
 import { consoleLogger, startPollLoop } from './poll-loop';
@@ -11,6 +12,16 @@ import { sendToUsbPrinter } from './printer-usb';
  * `startPollLoop`, and turning process signals into a clean shutdown. All the actual decisions
  * (which printer, what counts as a job, how failures get reported) live in `poll-loop.ts`,
  * where they're unit-tested; this file has no logic worth testing on its own.
+ *
+ * The `dotenv/config` import above is what actually loads `.env` into `process.env` before
+ * `loadConfigFromEnv()` reads it — README.md's "cp .env.example .env" step only creates the
+ * file, nothing loads it automatically otherwise (Node doesn't read `.env` files on its own).
+ * It's imported here, at the entry point, and not in `config.ts`, because `config.ts` is meant
+ * to stay a pure function of whatever `env` object it's given (see its own doc comment) —
+ * loading `.env` is a real side effect (touches the filesystem, mutates `process.env`) and
+ * belongs at the one place a side effect like that is appropriate: the actual process entry
+ * point, not a unit-tested pure module. It must be the very first import so it runs before
+ * `loadConfigFromEnv()` is called below.
  */
 async function main(): Promise<void> {
   const config = loadConfigFromEnv();

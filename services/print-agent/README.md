@@ -100,6 +100,13 @@ Steps 2–3 are identical either way; step 1 branches on how the printer is actu
    the common platforms, so `npm install` alone should be enough — no Xcode command line tools
    or `node-gyp` build step expected on a normal macOS/Windows/Linux machine.
 
+   `.env` is loaded automatically via the `dotenv` dependency (`import 'dotenv/config'` at the
+   top of `src/index.ts`) — you don't need to `source` it or export the variables yourself, just
+   have a valid `.env` file in this directory before running `npm start`/`npm run dev`. If you
+   still see "Missing required environment variable" after creating `.env`, double check you're
+   running the command from *this* directory (`services/print-agent`) — `dotenv` looks for
+   `.env` relative to the process's current working directory, not the repo root.
+
    Run it as a background service (systemd unit, pm2, Windows service, launchd on macOS) the
    same way any other always-on LAN process on the restaurant's server would be run — that
    packaging is left to the deployment target, not opinionated here.
