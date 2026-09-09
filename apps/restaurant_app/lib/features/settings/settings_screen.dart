@@ -5,6 +5,7 @@ import '../../core/auth/auth_session.dart';
 import '../../core/rbac/permissions.dart';
 import '../audit/audit_log_screen.dart';
 import '../menu_management/menu_management_screen.dart';
+import '../organization/organization_settings_screen.dart';
 import '../printers/printers_screen.dart';
 
 /// Replaces the old `PlaceholderScreen(title: 'Settings', ...)` in `home_shell.dart` — see
@@ -49,6 +50,19 @@ class SettingsScreen extends ConsumerWidget {
               ],
             ),
           ),
+        const Divider(height: 1),
+        // GET /organizations/me has no permission gate server-side — every signed-in user can
+        // view it, only settings.manage can edit (enforced inside the screen itself, same
+        // AbsorbPointer-dims-the-form pattern the tax-groups edit sheet uses).
+        ListTile(
+          leading: const Icon(Icons.storefront_outlined),
+          title: const Text('Business profile'),
+          subtitle: const Text('Name, GSTIN, contact, and address'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => Navigator.of(
+            context,
+          ).push(MaterialPageRoute<void>(builder: (_) => const OrganizationSettingsScreen())),
+        ),
         const Divider(height: 1),
         // Categories/items/variants/modifier-groups/tax-groups — full backend CRUD existed with
         // no UI consumer until now (see docs/pos-web.md's "What's explicitly not built": this is

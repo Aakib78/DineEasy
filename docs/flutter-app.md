@@ -318,6 +318,18 @@ Kitchen/KDS, Billing, Reports) builds on top of, not those features themselves:
   environment — no Flutter/Dart SDK here; the backend additions were verified with
   `tsc --noEmit` (baseline unchanged in kind — see docs/troubleshooting.md).
 
+- **Business profile screen** (`lib/features/organization/`, reached via Settings' new
+  "Business profile" entry): `GET`/`PATCH /organizations/me` existed with a real
+  `UpdateOrganizationDto` (name, legal name, GSTIN, phone, email, address) but no UI anywhere —
+  the only way to set any of it was a raw API call. Viewing has no permission gate server-side,
+  so every signed-in user reaches this screen; editing is `settings.manage`-gated (Owner only) —
+  the form dims via `AbsorbPointer` for anyone else, same pattern `TaxGroupsScreen`'s edit sheet
+  uses, rather than hiding the screen entirely. `country`/`currency`/`timezone` are real schema
+  columns with defaults but no DTO field to edit them (v1 is India-only by design, spec §1) —
+  shown read-only in a locked info row rather than omitted. Clearing the email field sends no
+  `email` key at all rather than an empty string, since the backend's `@IsEmail()` validates
+  whatever's present and would reject `''` — see the screen's `_submit` doc comment. No backend
+  changes needed. Not yet verified in this environment — no Flutter/Dart SDK here.
 - **Audit log viewer** (`lib/features/audit/`, reached via Settings' new "Audit log" entry):
   `AuditLogService` (`services/api`) has recorded every sensitive mutation since early in the
   project — menu/price edits, discounts, refunds, staff role changes, tax/org config (spec §23)
@@ -340,8 +352,8 @@ docs/offline-mode.md), real OS-level push/local notifications (the in-app inbox 
 step before that — it's a poll-driven bell, not a system notification), and the
 Windows/Android platform scaffolding itself (see below). Every permission-gated feature-area
 destination in the nav shell (POS, Tables, Kitchen, Billing, Reports, Staff) — and now Settings,
-via its Printers, Menu, and Audit log entries — has a real screen; there are no placeholder
-destinations left.
+via its Business profile, Printers, Menu, and Audit log entries — has a real screen; there are
+no placeholder destinations left.
 
 ## Why there's no `android/`, `ios/`, or `windows/` folder here
 
