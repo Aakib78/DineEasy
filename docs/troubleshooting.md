@@ -137,6 +137,12 @@ Fixes, in order of effort:
 3. There's no in-app "find/set the server" screen yet (tracked as a follow-up — see `docs/offline-mode.md` for how LAN discovery is meant to work once implemented); the address is set at launch instead, via `flutter run --dart-define=API_BASE_URL=http://<server-lan-ip>:3000/api/v1` (see `docs/local-development.md` §6). A physical device can't reach your dev machine's `localhost` — it needs the machine's actual LAN IP.
 4. Check the in-app System Status screen — it reports API/DB/Redis reachability independently, which narrows down whether the problem is network or the server process itself.
 
+### Not a bug: a table's seeded demo QR link (e.g. `demo-qr-ded-t1`) stops working after using "Regenerate QR" on it
+
+`TablesService.regenerateQrCode()` (spec §5's "QR tokens must be revocable and regeneratable") replaces a table's token *in place* on its one `TableQrCode` row (`tableId` is `@unique` — a table only ever has one) with a fresh random string, and always re-activates it. This is correct, intended behavior for production (an old, possibly-photographed QR code needs to stop working once regenerated) — but it also means any of `prisma/seed.ts`'s fixed demo tokens (`demo-qr-ded-t1`, `-t2`, ...) stop resolving forever once that table's QR has been regenerated even once, since the seed script's upsert is a no-op on existing rows (`update: {}`) and won't restore it.
+
+Fix: either scan/use whatever *current* QR token the app now shows for that table, or manually restore the known demo value — easiest via `npm run --workspace services/api prisma:studio` (edit the `TableQrCode` row's `token` back to e.g. `demo-qr-ded-t1`, `isActive: true`), or directly in Postgres (columns are camelCase, so they need quoting): `UPDATE table_qr_codes SET token = 'demo-qr-ded-t1', "isActive" = true, "regeneratedAt" = NULL WHERE "tableId" = (SELECT id FROM tables WHERE name = 'T1');`
+
 ### Fixed in this repo (dev setup, not a code bug): the menu fails to load in the browser and on a real phone once `npm run dev:web` prints a port other than 5173
 
 Caught after `dev:api`'s port got squatted by an orphaned process and `dev:web` similarly landed on 5175 instead of its usual 5173 (`vite --host` falls forward to the next free port silently — "Port 5173 is in use, trying another one..."). Two independent things break at once here, both `localhost`-flavored like the Flutter case above:
