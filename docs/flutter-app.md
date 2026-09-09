@@ -318,12 +318,30 @@ Kitchen/KDS, Billing, Reports) builds on top of, not those features themselves:
   environment — no Flutter/Dart SDK here; the backend additions were verified with
   `tsc --noEmit` (baseline unchanged in kind — see docs/troubleshooting.md).
 
+- **Audit log viewer** (`lib/features/audit/`, reached via Settings' new "Audit log" entry):
+  `AuditLogService` (`services/api`) has recorded every sensitive mutation since early in the
+  project — menu/price edits, discounts, refunds, staff role changes, tax/org config (spec §23)
+  — but `GET /audit-logs` had no UI consumer anywhere until now. `audit.view`-gated (Owner/Manager
+  only, per `permissions.catalog.ts`'s role table). Read-only list, newest 200 entries, each
+  expandable (`DraggableScrollableSheet`) into a before/after JSON diff — deliberately generic
+  (`humanizeAuditAction()` turns `"menu_item.price_changed"` into "Menu item price changed"
+  rather than hardcoding a label per action, since every backend call site follows that same
+  `<entity>.<verb>` convention and new ones get added as other features land). Backend gained a
+  small, real bug fix alongside this: `AuditLogService.listForOrganization` used to pass an
+  unchecked `limit` straight into Prisma's `take` — `GET /audit-logs?limit=abc` parsed to `NaN`
+  and threw a raw 500 instead of falling back to the default; now guarded both in the controller
+  and the service. The service also now joins the actor's name into the response — a raw
+  `actorUserId` UUID was useless to a human reading a log. Not yet verified in this environment —
+  no Flutter/Dart SDK here; the backend fix was verified with `tsc --noEmit` (unchanged) and
+  eslint (clean).
+
 **Not built yet**: offline/local-cache behavior (tracked with the LAN/offline backend slice —
 docs/offline-mode.md), real OS-level push/local notifications (the in-app inbox above is the
 step before that — it's a poll-driven bell, not a system notification), and the
 Windows/Android platform scaffolding itself (see below). Every permission-gated feature-area
 destination in the nav shell (POS, Tables, Kitchen, Billing, Reports, Staff) — and now Settings,
-via its Printers and Menu entries — has a real screen; there are no placeholder destinations left.
+via its Printers, Menu, and Audit log entries — has a real screen; there are no placeholder
+destinations left.
 
 ## Why there's no `android/`, `ios/`, or `windows/` folder here
 

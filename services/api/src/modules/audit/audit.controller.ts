@@ -12,9 +12,12 @@ export class AuditController {
   @Get()
   @RequirePermission(PERMISSIONS.AUDIT_VIEW)
   list(@CurrentUser() user: AuthenticatedUser, @Query('limit') limit?: string) {
-    return this.auditLogService.listForOrganization(
-      user.organizationId,
-      limit ? parseInt(limit, 10) : undefined,
-    );
+    // `Number('abc')` is NaN, not an error — guarded here (and again in the service) rather
+    // than trusting a bare `parseInt` result, which used to flow straight into Prisma's `take`
+    // and produce a raw 500 instead of a clean fallback to the default.
+    const parsed = limit !== undefined ? Number(limit) : undefined;
+    const safeLimit =
+      parsed !== undefined && Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+    return this.auditLogService.listForOrganization(user.organizationId, safeLimit);
   }
 }
