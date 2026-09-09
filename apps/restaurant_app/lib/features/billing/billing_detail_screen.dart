@@ -271,6 +271,7 @@ class _InvoiceCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final invoiceAsync = ref.watch(invoiceForOrderProvider(orderId));
+    final canView = ref.watch(currentUserProvider)?.hasPermission(Permissions.billingView) ?? false;
 
     return invoiceAsync.when(
       loading: () => const Card(
@@ -319,11 +320,80 @@ class _InvoiceCard extends ConsumerWidget {
                     ),
                   ),
               ],
+              if (canView) ...[
+                const Divider(),
+                _PrintBillButton(invoiceId: invoice.id),
+              ],
             ],
           ),
         ),
       ),
     );
+  }
+}
+
+/// Re-sends the same receipt ticket that was already queued automatically the moment this
+/// invoice was first generated (`BillingService.generateInvoice`) — for a printer that was
+/// off/out of paper at that moment, or a second copy for the customer. Its own small widget
+/// (rather than folded into `_InvoiceCard`) purely so its submitting/success state doesn't force
+/// the whole invoice card — and the `invoiceForOrderProvider` watch driving it — to rebuild.
+class _PrintBillButton extends ConsumerStatefulWidget {
+  const _PrintBillButton({required this.invoiceId});
+
+  final String invoiceId;
+
+  @override
+  ConsumerState<_PrintBillButton> createState() => _PrintBillButtonState();
+}
+
+class _PrintBillButtonState extends ConsumerState<_PrintBillButton> {
+  bool _submitting = false;
+  bool _printed = false;
+  String? _error;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_error != null) ...[
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          ),
+        ],
+        OutlinedButton.icon(
+          onPressed: _submitting ? null : _print,
+          icon: const Icon(Icons.print_outlined),
+          label: Text(_submitting ? 'Sending to printer…' : 'Print bill'),
+        ),
+        if (_printed) ...[
+          const SizedBox(height: 4),
+          Text(
+            'Sent to the receipt printer.',
+            style: TextStyle(color: Theme.of(context).colorScheme.tertiary, fontSize: 13),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Future<void> _print() async {
+    setState(() {
+      _submitting = true;
+      _error = null;
+      _printed = false;
+    });
+
+    try {
+      await ref.read(billingRepositoryProvider).printInvoice(widget.invoiceId);
+      if (mounted) setState(() => _printed = true);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
   }
 }
 

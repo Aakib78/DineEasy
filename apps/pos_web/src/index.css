@@ -757,6 +757,12 @@ button {
   margin-bottom: 12px;
 }
 
+.billing-detail__print-hint {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--status-success);
+}
+
 .billing-card {
   background: var(--surface);
   border: 1px solid var(--border);

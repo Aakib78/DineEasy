@@ -80,4 +80,10 @@ export const billingApi = {
       method: 'POST',
       body: { method, amount: Number(amount) },
     }),
+
+  /** Re-sends the same receipt ticket `generateInvoice` already prints automatically on the
+   * first call — for a printer that was off/out of paper at that moment, or a second copy for
+   * the customer. Safe to call as many times as needed; each call queues one more print job. */
+  printInvoice: (invoiceId: string) =>
+    apiRequest<{ queued: boolean }>(`/invoices/${invoiceId}/print`, { method: 'POST' }),
 };
