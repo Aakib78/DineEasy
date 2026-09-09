@@ -16,6 +16,7 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
+    "dotenv": "^17.4.2",
     "usb": "^2.18.0"
   },
   "devDependencies": {
