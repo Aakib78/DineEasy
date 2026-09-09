@@ -135,6 +135,15 @@ Fixes, in order of effort:
 3. There's no in-app "find/set the server" screen yet (tracked as a follow-up — see `docs/offline-mode.md` for how LAN discovery is meant to work once implemented); the address is set at launch instead, via `flutter run --dart-define=API_BASE_URL=http://<server-lan-ip>:3000/api/v1` (see `docs/local-development.md` §6). A physical device can't reach your dev machine's `localhost` — it needs the machine's actual LAN IP.
 4. Check the in-app System Status screen — it reports API/DB/Redis reachability independently, which narrows down whether the problem is network or the server process itself.
 
+### Fixed in this repo (dev setup, not a code bug): the menu fails to load in the browser and on a real phone once `npm run dev:web` prints a port other than 5173
+
+Caught after `dev:api`'s port got squatted by an orphaned process and `dev:web` similarly landed on 5175 instead of its usual 5173 (`vite --host` falls forward to the next free port silently — "Port 5173 is in use, trying another one..."). Two independent things break at once here, both `localhost`-flavored like the Flutter case above:
+
+1. **CORS**: `.env`'s `CORS_ORIGINS` is a strict allow-list (`http://localhost:5173,...` by default). When Vite lands on a different port, the API rejects every request from that origin outright — this alone breaks the menu even in the browser on the same machine.
+2. **`customer_web`'s API base URL defaults to `localhost:3000`** (`apps/customer_web/src/lib/api/client.ts`) unless overridden by `VITE_API_BASE_URL` in `apps/customer_web/.env.local` (gitignored, not committed — see `.env.example`). That's fine for the same machine's own browser, but a phone's `localhost` is the phone itself — it never reaches the dev machine at all, same underlying issue as the Flutter app needing `API_BASE_URL` set to the LAN IP.
+
+Fix: add the LAN-IP origin(s) actually in use to `.env`'s `CORS_ORIGINS`, and create `apps/customer_web/.env.local` with `VITE_API_BASE_URL=http://<dev-machine-lan-ip>:3000/api/v1` (find the IP with `ipconfig getifaddr en0` on macOS, or read it off `vite --host`'s own "Network:" line). Longer-term fix for the port drift itself: find and kill whatever's already holding 5173/5174 (`lsof -iTCP:5173 -sTCP:LISTEN`) so Vite stops falling forward — simpler than re-whitelisting a new port every time. Confirmed: this is a per-machine LAN-IP config issue, not something the app can detect/fix on its own until QR-embedded server discovery (see the Flutter section above) ships.
+
 ### Customer can't load the QR menu on the restaurant's guest Wi-Fi
 
 This is almost always a guest-network isolation setting on the restaurant's router (client isolation / AP isolation), which by design prevents guest devices from reaching *anything* else on the LAN, including the DineEasy server. See `docs/deployment.md` for the guest-network requirement; the fix is a router configuration change, not a DineEasy change.
