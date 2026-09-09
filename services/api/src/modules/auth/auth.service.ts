@@ -157,7 +157,7 @@ export class AuthService {
     user: { userId: string; organizationId: string; name: string; email: string },
     deviceInfo?: string,
   ): Promise<TokenPair> {
-    const activeOutletId = await this.resolveActiveOutlet(user.userId);
+    const activeOutletId = await this.resolveActiveOutlet(user.userId, user.organizationId);
     const permissions = await this.rolesService.getEffectivePermissions(
       user.userId,
       activeOutletId,
@@ -195,20 +195,44 @@ export class AuthService {
   }
 
   /**
-   * v1 heuristic: a user with an org-wide role (outletId null, e.g. Owner) has no single
-   * "active outlet" — they pick one client-side when multi-outlet support ships (spec §20).
-   * A user with exactly one outlet-scoped role assignment (the common case for Manager/
-   * Cashier/Waiter/Kitchen in a single-outlet v1 restaurant) is scoped to that outlet
-   * automatically so they don't have to select one every login.
+   * v1 heuristic: a user with exactly one outlet-scoped role assignment (the common case for
+   * Manager/Cashier/Waiter/Kitchen in a single-outlet v1 restaurant) is scoped to that outlet
+   * automatically so they don't have to select one every login. More than one outlet-scoped
+   * assignment has no single answer — they pick one client-side once multi-outlet support
+   * ships (spec §20); no such picker exists yet, so today that case (like a genuinely
+   * unassigned staff member) leaves `activeOutletId` unset and the app shows its "not
+   * assigned to an outlet" screen.
+   *
+   * A user with an org-wide role (outletId null, e.g. Owner) and *zero* outlet-scoped
+   * assignments is a different case from "unassigned" — Owner's whole point is org-wide
+   * oversight, not being tied to one outlet, but v1's outlet-scoped screens (POS, Tables,
+   * Kitchen, Billing) still need *some* concrete outlet to operate against, and there's no
+   * client-side picker for that yet either. Caught on this project's first real login (an
+   * Owner account, seeded with no outlet-scoped role by design — see prisma/seed.ts) hitting
+   * a dead end with no way to use any outlet-scoped screen at all, in what's expected to be
+   * the single most common real-world shape for this app (one owner, one restaurant — see
+   * docs/architecture.md §1's Delhi/Faridabad launch framing). Default to the organization's
+   * outlet when it has exactly one, covering that common case without needing a picker yet;
+   * an org with more than one outlet still has no automatic answer and is left unset, same as
+   * the multi-role case above.
    */
-  private async resolveActiveOutlet(userId: string): Promise<string | undefined> {
+  private async resolveActiveOutlet(
+    userId: string,
+    organizationId: string,
+  ): Promise<string | undefined> {
     const outletRoles = await this.prisma.userRole.findMany({
       where: { userId, outletId: { not: null } },
       select: { outletId: true },
       distinct: ['outletId'],
     });
     if (outletRoles.length === 1) return outletRoles[0].outletId ?? undefined;
-    return undefined;
+    if (outletRoles.length > 1) return undefined;
+
+    const orgOutlets = await this.prisma.outlet.findMany({
+      where: { organizationId },
+      select: { id: true },
+    });
+    return orgOutlets.length === 1 ? orgOutlets[0].id : undefined;
   }
 
   private hashRefreshToken(token: string): string {
