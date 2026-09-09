@@ -152,6 +152,14 @@ Caught after `dev:api`'s port got squatted by an orphaned process and `dev:web` 
 
 Fix: add the LAN-IP origin(s) actually in use to `.env`'s `CORS_ORIGINS`, and create `apps/customer_web/.env.local` with `VITE_API_BASE_URL=http://<dev-machine-lan-ip>:3000/api/v1` (find the IP with `ipconfig getifaddr en0` on macOS, or read it off `vite --host`'s own "Network:" line). Longer-term fix for the port drift itself: find and kill whatever's already holding 5173/5174 (`lsof -iTCP:5173 -sTCP:LISTEN`) so Vite stops falling forward — simpler than re-whitelisting a new port every time. Confirmed: this is a per-machine LAN-IP config issue, not something the app can detect/fix on its own until QR-embedded server discovery (see the Flutter section above) ships.
 
+### Not a bug: `apps/pos_web` logs in fine, then suddenly a CORS error, after adding an origin to `.env`'s `CORS_ORIGINS`
+
+Caught the first time `apps/pos_web` was run against a `dev:api` that had already been running for a while: adding a new origin to `.env`'s `CORS_ORIGINS` (e.g. the LAN-IP form for a second device — see the port-drift entry above) has zero effect until `dev:api` is restarted. `@nestjs/config`'s `ConfigService` (backing `configuration.ts`'s `corsOrigins`, and every other `.env`-derived value) reads `.env` once via `dotenv` at process startup — there's no file-watching, so a running API process keeps enforcing whatever allow-list was in `.env` the moment it started, not what's on disk right now. `npm run start:dev`'s hot-reload (nodemon/ts-node-dev restarting on *source* file changes) doesn't help here either, since `.env` isn't a source file it watches.
+
+Symptom looks confusing because it's intermittent-seeming: the exact same origin that was already in `CORS_ORIGINS` before `dev:api` started (e.g. `http://localhost:3001`, in the allow-list by default — see `.env.example`) works fine, while a newly-added one silently doesn't, with no error anywhere pointing at "stale config" — the browser just reports a generic CORS block on the new origin's requests.
+
+Fix: restart `dev:api` (`Ctrl+C`, then `npm run dev:api` again) after any `.env` edit. Not specific to `CORS_ORIGINS` — this applies to every `.env`-sourced value (JWT secrets, `API_PORT`, `PAYMENTS_PROVIDER`, ...); CORS just happens to be the one where the failure mode (silently blocked cross-origin requests) is the most confusing to trace back to "the server just hasn't seen the new value yet."
+
 ### Fixed in this repo: "Add to cart" silently does nothing on a real phone (worked fine on a laptop/localhost)
 
 Caught testing the QR menu on a real device on the restaurant's LAN, after every earlier connectivity issue (CORS, `VITE_API_BASE_URL`, the Firewall/port-drift entries above) was already resolved — the menu loaded fine, tapping an item opened the customize sheet fine, but tapping "Add to cart" did visibly nothing: no error, no cart bar appearing, nothing in the UI at all.
