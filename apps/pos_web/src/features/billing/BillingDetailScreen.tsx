@@ -47,9 +47,12 @@ export function BillingDetailScreen() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [printing, setPrinting] = useState(false);
+  const [printed, setPrinted] = useState(false);
 
   const canBill = hasPermission(PERMISSIONS.BILLING_CREATE);
   const canTakePayment = hasPermission(PERMISSIONS.PAYMENTS_TAKE);
+  const canView = hasPermission(PERMISSIONS.BILLING_VIEW);
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -76,12 +79,34 @@ export function BillingDetailScreen() {
     setGenerating(true);
     setActionError(null);
     try {
+      // Generating already queues a print job on the backend (BillingService.generateInvoice)
+      // the moment it creates the invoice — this call doesn't print anything a second time,
+      // it just also shows the invoice on screen.
       setInvoice(await billingApi.generateInvoice(orderId));
       await load();
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : 'Could not generate the bill.');
     } finally {
       setGenerating(false);
+    }
+  }
+
+  // Separate from `handleGenerate` — generating an invoice only ever prints once, automatically,
+  // the moment it's first created (see that handler's comment above). This is the explicit
+  // re-print: for a printer that was off/out of paper the first time, or a second copy for the
+  // customer. Safe to press more than once; each press queues one more ticket.
+  async function handlePrint() {
+    if (!invoice) return;
+    setPrinting(true);
+    setActionError(null);
+    setPrinted(false);
+    try {
+      await billingApi.printInvoice(invoice.id);
+      setPrinted(true);
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'Could not send the bill to the printer.');
+    } finally {
+      setPrinting(false);
     }
   }
 
@@ -186,6 +211,15 @@ export function BillingDetailScreen() {
                     <span>{formatMoney(tax.taxAmount)}</span>
                   </div>
                 ))}
+              </>
+            )}
+            {canView && (
+              <>
+                <div className="billing-card__divider" />
+                <button className="secondary-button" onClick={() => void handlePrint()} disabled={printing}>
+                  {printing ? 'Sending to printer…' : 'Print bill'}
+                </button>
+                {printed && <p className="billing-detail__print-hint">Sent to the receipt printer.</p>}
               </>
             )}
           </section>

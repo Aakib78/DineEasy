@@ -142,24 +142,52 @@ export class BillingService {
     });
 
     const result = await this.getById(organizationId, invoice.id);
-    await this.printersService.enqueueForType(outletId, 'RECEIPT', {
-      invoiceNumber: result.invoiceNumber,
-      orderNumber: order.orderNumber,
-      items: result.items.map((i) => ({
-        description: i.description,
-        quantity: i.quantity,
-        total: i.total.toString(),
-      })),
-      subtotal: result.subtotal.toString(),
-      taxes: result.taxes.map((t) => ({
-        taxType: t.taxType,
-        ratePercent: t.ratePercent.toString(),
-        taxAmount: t.taxAmount.toString(),
-      })),
-      total: result.total.toString(),
-    });
+    await this.printersService.enqueueForType(
+      outletId,
+      'RECEIPT',
+      this.buildReceiptPayload(order.orderNumber, result),
+    );
 
     return result;
+  }
+
+  /**
+   * Re-enqueues the same RECEIPT print job `generateInvoice` sends automatically — for a
+   * printer that was off/out of paper/never configured yet at the moment the bill was first
+   * generated, or simply because the customer wants a second copy. `generateInvoice` itself is
+   * idempotent (see its early-return above) and deliberately does *not* re-print on a repeat
+   * call, so without this method there would be no way to get a receipt out of the printer
+   * after the first attempt failed — this is that explicit, staff-initiated escape hatch.
+   *
+   * Scoped by invoice ID alone rather than the caller's active outlet (like `getById`/
+   * `getByOrderId` below) — the invoice's own `outletId` is what the print job is enqueued
+   * against, not whatever outlet the requesting staff member happens to be signed into.
+   */
+  async printInvoice(organizationId: string, invoiceId: string, actorUserId: string) {
+    const invoice = await this.getById(organizationId, invoiceId);
+    const order = await this.ordersService.getById(
+      organizationId,
+      invoice.outletId,
+      invoice.orderId,
+    );
+
+    await this.printersService.enqueueForType(
+      invoice.outletId,
+      'RECEIPT',
+      this.buildReceiptPayload(order.orderNumber, invoice),
+    );
+
+    await this.auditLog.record({
+      organizationId,
+      outletId: invoice.outletId,
+      actorUserId,
+      action: 'invoice.print_requested',
+      entityType: 'Invoice',
+      entityId: invoice.id,
+      newState: { invoiceNumber: invoice.invoiceNumber },
+    });
+
+    return { queued: true };
   }
 
   async getById(organizationId: string, id: string) {
@@ -178,5 +206,43 @@ export class BillingService {
     });
     if (!invoice) throw new NotFoundDomainError('Invoice for order', orderId);
     return invoice;
+  }
+
+  /**
+   * The RECEIPT print-agent payload shape (see `services/print-agent/src/escpos.ts`'s
+   * `buildReceiptTicket`) — shared between the automatic print-on-generate above and the
+   * explicit `printInvoice` reprint so the two can never drift into producing different-looking
+   * tickets for the same invoice.
+   */
+  private buildReceiptPayload(
+    orderNumber: string,
+    invoice: {
+      invoiceNumber: string;
+      items: { description: string; quantity: number; total: { toString(): string } }[];
+      subtotal: { toString(): string };
+      taxes: {
+        taxType: string;
+        ratePercent: { toString(): string };
+        taxAmount: { toString(): string };
+      }[];
+      total: { toString(): string };
+    },
+  ): Record<string, unknown> {
+    return {
+      invoiceNumber: invoice.invoiceNumber,
+      orderNumber,
+      items: invoice.items.map((i) => ({
+        description: i.description,
+        quantity: i.quantity,
+        total: i.total.toString(),
+      })),
+      subtotal: invoice.subtotal.toString(),
+      taxes: invoice.taxes.map((t) => ({
+        taxType: t.taxType,
+        ratePercent: t.ratePercent.toString(),
+        taxAmount: t.taxAmount.toString(),
+      })),
+      total: invoice.total.toString(),
+    };
   }
 }

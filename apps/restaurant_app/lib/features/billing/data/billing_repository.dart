@@ -31,6 +31,17 @@ class BillingRepository {
     }
   }
 
+  /// Re-sends the same receipt ticket `generateInvoice` already prints automatically the moment
+  /// an invoice is first created — for a printer that was off/out of paper at that moment, or a
+  /// second copy for the customer. Safe to call more than once; each call queues one more job.
+  Future<void> printInvoice(String invoiceId) async {
+    try {
+      await _apiClient.dio.post<void>('/invoices/$invoiceId/print');
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
   /// A partial payment (e.g. one guest paying cash for their share) is legal — the order only
   /// advances past BILLED once the running total of SUCCEEDED payments covers the full amount
   /// (`PaymentsService.recordPayment`'s doc comment). The response body isn't parsed into a

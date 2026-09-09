@@ -32,4 +32,13 @@ export class BillingController {
   getById(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.billingService.getById(user.organizationId, id);
   }
+
+  // Gated on BILLING_VIEW, not BILLING_CREATE — printing doesn't create or change anything
+  // financial, it just re-sends the same receipt ticket to the printer, so anyone who can
+  // already see the bill can ask for a physical copy of it.
+  @Post('invoices/:id/print')
+  @RequirePermission(PERMISSIONS.BILLING_VIEW)
+  print(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.billingService.printInvoice(user.organizationId, id, user.userId);
+  }
 }
