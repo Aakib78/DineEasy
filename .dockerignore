@@ -1,0 +1,20 @@
+# Root .dockerignore — applies to any image whose docker-compose build.context is the
+# monorepo root (currently apps/customer_web/Dockerfile, since it depends on the local
+# workspace package packages/shared_types and needs the whole workspace tree visible to
+# `npm install`; see docs/troubleshooting.md). services/api still builds with its own
+# service directory as context and keeps its own .dockerignore for that.
+node_modules
+**/node_modules
+dist
+**/dist
+build
+**/build
+coverage
+**/coverage
+.git
+*.log
+.env
+.env.*
+.DS_Store
+**/.DS_Store
+services/api/test

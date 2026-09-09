@@ -68,8 +68,12 @@ services:
 
   web:
     build:
-      context: ../../apps/customer_web
-      dockerfile: Dockerfile
+      # Root context (not apps/customer_web) — this image depends on the local workspace
+      # package packages/shared_types, which npm can only resolve if the whole workspace
+      # tree is visible in the build context. See apps/customer_web/Dockerfile's header
+      # comment and docs/troubleshooting.md.
+      context: ../..
+      dockerfile: apps/customer_web/Dockerfile
       args:
         # Vite bakes env vars into the static bundle at BUILD time, not runtime — so this has
         # to be a build arg, not a container `environment:` entry (which would silently do

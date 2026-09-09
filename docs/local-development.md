@@ -20,10 +20,12 @@ Edit `.env` if you need non-default ports, or want to point `DATABASE_URL`/`REDI
 ## 2. Start Postgres + Redis
 
 ```bash
-npm run docker:up      # postgres + redis (+ api + web if you want the fully dockerized stack)
+docker compose --env-file .env -f infrastructure/docker/docker-compose.yml -f infrastructure/docker/docker-compose.dev.yml up -d postgres redis
 ```
 
-This uses `infrastructure/docker/docker-compose.yml` + `docker-compose.dev.yml`. Most day-to-day development runs the API and web app on the host (steps 4–5) against these two dockerized services, since that gives you fast rebuilds and normal debugger attachment.
+Most day-to-day development runs the API and web app on the host (steps 4–5) against just these two dockerized services, since that gives you fast rebuilds and normal debugger attachment — naming `postgres redis` explicitly skips building the `api`/`web` images entirely.
+
+`npm run docker:up` (no service names) brings up the *whole* stack — `api` and `web` too, each built from scratch — which is only worth the wait for a full dockerized-parity check (see "Full dockerized parity check" below); don't reach for it just to unblock steps 3–5, and expect it to take a minute or two the first time.
 
 ## 3. Install dependencies and set up the database
 

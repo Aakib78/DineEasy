@@ -44,6 +44,28 @@ Two more real bugs, both invisible in this sandbox for the same reason as the on
 1. `services/api`'s `prisma migrate dev`/`prisma:studio`/`seed` scripts failed with `Environment variable not found: DATABASE_URL`, even with a perfectly good root `.env` in place. Cause: every `npm run --workspace services/api <script>` (and `npm run dev:api`) runs with `services/api` as the process's working directory, not the repo root — and both Prisma CLI's own `.env` auto-loading and `@nestjs/config`'s default `envFilePath` resolve relative to that cwd, so neither ever looked at the root `.env` in the first place; this failed silently up front (no error about *finding* it, just about the variable inside it never existing). Fixed two ways, matching where each reader actually runs: `AppModule`'s `ConfigModule.forRoot` now passes `envFilePath: ['.env', '../../.env']` (covers the running app, `npm run dev:api`/`start`), and the `prisma:*`/`seed` scripts in `services/api/package.json` now go through `dotenv-cli` (`dotenv -e ../../.env -- prisma migrate dev`, etc. — covers the Prisma CLI and `ts-node prisma/seed.ts`, neither of which goes through Nest's `ConfigModule` at all). The root `.env` stays the single source of truth either way; nothing needs copying into `services/api/`.
 2. `prisma/seed.ts` failed to compile: `prisma.userRole.upsert({ where: { userId_roleId_outletId: { ..., outletId } }, ... })` where `outletId` is `string | null` (org-wide roles, e.g. Owner, are seeded with `outletId: null`) — TS2322, `outletId` can't be `null` in that position. This isn't a seed-script-only quirk: `UserRole`'s `@@unique([userId, roleId, outletId])` includes a nullable column (`outletId String?`), and Prisma's generated compound-key `WhereUniqueInput` never accepts `null` for a nullable member of a unique index, because SQL's `NULL <> NULL` means an equality lookup there can't reliably mean "the row where this is NULL" the way `upsert`/`findUnique` require. `UsersService.removeRoleAssignment` already works around the identical shape with a plain (non-compound-key) `where` filter instead; `seed.ts` now does the same — `findFirst` + a manual `create` instead of `upsert` on the compound key. Both fixes were verified by an actual `tsc`/`ts-node` run against a *real* generated `@prisma/client` (on a machine that could reach `binaries.prisma.sh`) — the first time anything in this repo touching the generated client had been checked against the real thing rather than read for plausibility.
 
+### Fixed in this repo: `npm run docker:up` failed building the `web` image with `404 Not Found - @dineeasy/shared-types`
+
+Another bug caught the first time these images were actually built (Docker Hub is blocked in the sandbox this repo was scaffolded in, so only `docker compose config` — pure YAML validation, no build — had ever been run against these compose files before now; see the `registry-1.docker.io` entry above). Symptom:
+
+```
+npm error code E404
+npm error 404 Not Found - GET https://registry.npmjs.org/@dineeasy%2fshared-types - Not found
+npm error 404  '@dineeasy/shared-types@*' is not in this registry.
+```
+
+Cause: `apps/customer_web` depends on `packages/shared_types` (`@dineeasy/shared-types`, version `"*"`) as a local npm workspace package — it's never been published anywhere, and never should be. `apps/customer_web/Dockerfile`'s build context was `apps/customer_web` itself (`context: ../../apps/customer_web` in `docker-compose.yml`), so `packages/shared_types` was completely outside what Docker could see; `npm install` fell through to looking for it on the real npm registry and 404'd. `services/api`'s image never hit this because `services/api` doesn't currently depend on `packages/shared_types`.
+
+Fixed by moving the `web` image's build context to the monorepo root (`context: ../..`, `dockerfile: apps/customer_web/Dockerfile`) so the whole workspace — root `package.json`/`package-lock.json` plus every workspace member's `package.json` — is visible to `npm install`, which is what lets npm link `@dineeasy/shared-types` from `packages/shared_types` instead of hitting the registry. Added a root `.dockerignore` (there wasn't one — only `services/api/.dockerignore`, scoped to that image's own context) so the larger root build context doesn't ship `node_modules`/`.git`/build output to the Docker daemon. `docker-compose.dev.yml`'s `web` bind mount changed from `../../apps/customer_web:/app` to `../..:/repo` (matching the Dockerfile's new `/repo` root, with `/repo/node_modules` and `/repo/apps/customer_web/node_modules` as anonymous volumes protecting the image's Linux-built `node_modules` from the host's) — this also means editing `packages/shared_types` now hot-reloads the dev container, which it couldn't before.
+
+Both compose files re-validated with `docker compose config --quiet` after the fix (exit 0) — this sandbox still can't do a real `docker build` (same Docker Hub block), so the actual image build was verified on a real machine, not here.
+
+If you only need Postgres + Redis (the normal day-to-day setup — see the top of `docs/local-development.md`), skip the full `docker:up` build entirely and start just those two services:
+
+```
+docker compose --env-file .env -f infrastructure/docker/docker-compose.yml -f infrastructure/docker/docker-compose.dev.yml up -d postgres redis
+```
+
 ## Runtime
 
 ### Flutter app shows "Can't connect to DineEasy Server"
