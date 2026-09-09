@@ -9,95 +9,112 @@ import { useRealtimeEvent } from '../../lib/realtime/RealtimeContext';
 
 const BILLABLE_STATUSES = new Set<OrderStatus>(['SERVED', 'BILLED', 'PAID']);
 
+function todayIso(): string {
+  // UTC, matching OrdersService.listCompletedForOutlet's day-boundary convention (server UTC,
+  // not outlet-local — the same v1 simplification documented on DailyCounterService).
+  return new Date().toISOString().slice(0, 10);
+}
+
 /**
- * Orders ready to bill (SERVED, awaiting `POST /orders/:id/invoice`) or already billed and
- * awaiting payment (BILLED, or the brief in-flight PAID moment before the backend auto-advances
- * it to COMPLETED). Reuses `GET /orders` (already excludes COMPLETED/CANCELLED/REFUNDED) rather
- * than a dedicated endpoint — same approach as
+ * Two tabs: "Incomplete" (orders ready to bill or awaiting payment — `GET /orders`, which
+ * already excludes COMPLETED/CANCELLED/REFUNDED) and "Completed" (`GET /orders/completed`, one
+ * calendar day at a time via a date filter, defaulting to today). Reuses `GET /orders` rather
+ * than a dedicated endpoint for the first tab — same approach as
  * `apps/restaurant_app/lib/features/billing/billing_screen.dart`.
  *
- * Also lists today's already-COMPLETED orders below the active list (`GET /orders/completed`,
- * `ordersApi.listCompleted`) — closes a real gap: once an order settles to COMPLETED it drops
- * off the active list above, and until this existed there was no way back to its detail screen
- * to reprint the receipt if a cashier navigated away right after taking payment. See
+ * The Completed tab exists to close a real gap: once an order settles to COMPLETED it drops off
+ * the Incomplete list, and until this existed there was no way back to its detail screen to
+ * reprint the receipt if staff navigated away right after taking payment. See
  * `OrdersService.listCompletedForOutlet`'s doc comment and docs/printing.md.
  */
 export function BillingScreen() {
   const navigate = useNavigate();
+  const [tab, setTab] = useState<'incomplete' | 'completed'>('incomplete');
+  const [date, setDate] = useState(todayIso);
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [completed, setCompleted] = useState<Order[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setError(null);
+  const loadActive = useCallback(async () => {
     try {
-      const [active, done] = await Promise.all([ordersApi.listActive(), ordersApi.listCompleted()]);
-      setOrders(active);
-      setCompleted(done);
+      setOrders(await ordersApi.listActive());
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not load orders.');
     }
   }, []);
 
+  const loadCompleted = useCallback(async (forDate: string) => {
+    try {
+      setCompleted(await ordersApi.listCompleted(forDate));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not load completed orders.');
+    }
+  }, []);
+
   useEffect(() => {
-    void load();
-  }, [load]);
+    void loadActive();
+  }, [loadActive]);
+
+  useEffect(() => {
+    void loadCompleted(date);
+  }, [date, loadCompleted]);
 
   // A partial payment or a served order from a different terminal shows up here live — see
   // PaymentsService.recordPayment's doc comment on why every payment (not just fully-settling
-  // ones) emits this hint. Also covers an order settling to COMPLETED elsewhere, which is what
-  // moves it from the active list into "Recently completed" below.
-  useRealtimeEvent('order.updated', () => void load());
+  // ones) emits this hint. Only re-checks Completed when today is the selected day — an order
+  // settling elsewhere can't affect a past day's already-fixed list.
+  useRealtimeEvent('order.updated', () => {
+    void loadActive();
+    if (date === todayIso()) void loadCompleted(date);
+  });
 
   if (error) {
     return (
       <div className="empty-state">
         <p>{error}</p>
-        <button className="secondary-button" onClick={() => void load()}>
+        <button
+          className="secondary-button"
+          onClick={() => {
+            setError(null);
+            void loadActive();
+            void loadCompleted(date);
+          }}
+        >
           Retry
         </button>
       </div>
     );
   }
 
-  if (!orders || !completed) return <p className="loading-text">Loading orders…</p>;
-
-  const billable = orders.filter((o) => BILLABLE_STATUSES.has(o.status));
+  const billable = orders?.filter((o) => BILLABLE_STATUSES.has(o.status)) ?? null;
 
   return (
     <div className="billing-screen">
-      {billable.length === 0 ? (
-        <div className="empty-state">
-          <p>No orders waiting to be billed.</p>
-        </div>
-      ) : (
-        <ul className="billing-list">
-          {billable.map((order) => (
-            <li key={order.id}>
-              <button className="billing-tile" onClick={() => navigate(`/billing/${order.id}`)}>
-                <div className="billing-tile__info">
-                  <span className="billing-tile__title">
-                    {order.table ? `${order.table.name} · ${order.orderNumber}` : `Takeaway · ${order.orderNumber}`}
-                  </span>
-                  <span className={`billing-tile__status billing-tile__status--${statusTone(order)}`}>
-                    {statusLabel(order)}
-                  </span>
-                </div>
-                <span className="billing-tile__total">{formatMoney(order.total)}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      <div className="payment-method-row">
+        <button
+          className={`method-chip${tab === 'incomplete' ? ' method-chip--active' : ''}`}
+          onClick={() => setTab('incomplete')}
+        >
+          Incomplete{billable ? ` (${billable.length})` : ''}
+        </button>
+        <button
+          className={`method-chip${tab === 'completed' ? ' method-chip--active' : ''}`}
+          onClick={() => setTab('completed')}
+        >
+          Completed
+        </button>
+      </div>
 
-      {completed.length > 0 && (
-        <section className="billing-screen__completed">
-          <h2 className="billing-screen__completed-heading">Recently completed</h2>
-          <p className="billing-screen__completed-hint">
-            Fully paid, today. Open one to reprint its receipt.
-          </p>
+      {tab === 'incomplete' ? (
+        billable === null ? (
+          <p className="loading-text">Loading orders…</p>
+        ) : billable.length === 0 ? (
+          <div className="empty-state">
+            <p>No orders waiting to be billed.</p>
+          </div>
+        ) : (
           <ul className="billing-list">
-            {completed.map((order) => (
+            {billable.map((order) => (
               <li key={order.id}>
                 <button className="billing-tile" onClick={() => navigate(`/billing/${order.id}`)}>
                   <div className="billing-tile__info">
@@ -106,14 +123,54 @@ export function BillingScreen() {
                         ? `${order.table.name} · ${order.orderNumber}`
                         : `Takeaway · ${order.orderNumber}`}
                     </span>
-                    <span className="billing-tile__status billing-tile__status--success">Completed</span>
+                    <span className={`billing-tile__status billing-tile__status--${statusTone(order)}`}>
+                      {statusLabel(order)}
+                    </span>
                   </div>
                   <span className="billing-tile__total">{formatMoney(order.total)}</span>
                 </button>
               </li>
             ))}
           </ul>
-        </section>
+        )
+      ) : (
+        <>
+          <label className="field billing-screen__date-field">
+            Date
+            <input
+              type="date"
+              value={date}
+              max={todayIso()}
+              onChange={(e) => e.target.value && setDate(e.target.value)}
+            />
+          </label>
+
+          {completed === null ? (
+            <p className="loading-text">Loading orders…</p>
+          ) : completed.length === 0 ? (
+            <div className="empty-state">
+              <p>No completed orders on this date.</p>
+            </div>
+          ) : (
+            <ul className="billing-list">
+              {completed.map((order) => (
+                <li key={order.id}>
+                  <button className="billing-tile" onClick={() => navigate(`/billing/${order.id}`)}>
+                    <div className="billing-tile__info">
+                      <span className="billing-tile__title">
+                        {order.table
+                          ? `${order.table.name} · ${order.orderNumber}`
+                          : `Takeaway · ${order.orderNumber}`}
+                      </span>
+                      <span className="billing-tile__status billing-tile__status--success">Completed</span>
+                    </div>
+                    <span className="billing-tile__total">{formatMoney(order.total)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
     </div>
   );

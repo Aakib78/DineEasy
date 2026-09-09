@@ -1,15 +1,15 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { CreateStaffOrderDto } from './dto/create-staff-order.dto';
 import { AddOrderItemsDto } from './dto/add-order-items.dto';
 import { ApplyDiscountDto } from './dto/apply-discount.dto';
 import { CancelOrderDto } from './dto/cancel-order.dto';
+import { ListCompletedOrdersDto } from './dto/list-completed-orders.dto';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { PERMISSIONS } from '../../common/rbac/permissions.catalog';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { requireActiveOutlet } from '../../common/utils/require-active-outlet.util';
-import { startOfDay } from '../reports/reports.service';
 
 /** POS terminal + Flutter Waiter app entry points — see OrdersGuestController for the QR side. */
 @Controller('orders')
@@ -40,18 +40,20 @@ export class OrdersController {
   /**
    * Declared before `:id` deliberately — Nest/Express match routes in registration order, so
    * this static path must come first or `/orders/completed` would be swallowed by `:id` (with
-   * `id` bound to the literal string "completed") and 404 as an order lookup instead. Today's
-   * completed orders only, outlet-local-ish (see `OrdersService.listCompletedForOutlet`'s doc
-   * comment) — this is what makes a "Print bill" reprint reachable again after a cashier
-   * navigates away from `BillingDetailScreen` post-payment; see docs/printing.md.
+   * `id` bound to the literal string "completed") and 404 as an order lookup instead. Backs the
+   * Billing screens' "Completed" tab and its date filter (see `ListCompletedOrdersDto` — one
+   * calendar day at a time, defaulting to today when `date` is omitted) — this is what makes a
+   * "Print bill" reprint reachable again after a cashier navigates away from
+   * `BillingDetailScreen` post-payment; see `OrdersService.listCompletedForOutlet`'s doc comment
+   * and docs/printing.md.
    */
   @Get('completed')
   @RequirePermission(PERMISSIONS.ORDERS_VIEW)
-  listCompleted(@CurrentUser() user: AuthenticatedUser) {
+  listCompleted(@CurrentUser() user: AuthenticatedUser, @Query() query: ListCompletedOrdersDto) {
     return this.ordersService.listCompletedForOutlet(
       user.organizationId,
       requireActiveOutlet(user),
-      startOfDay(new Date()),
+      query.date ? new Date(query.date) : new Date(),
     );
   }
 

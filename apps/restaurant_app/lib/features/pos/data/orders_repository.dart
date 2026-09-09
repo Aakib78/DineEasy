@@ -24,15 +24,19 @@ class OrdersRepository {
     }
   }
 
-  /// Today's already-COMPLETED orders (backend: `GET /orders/completed`,
+  /// COMPLETED orders for one calendar day (backend: `GET /orders/completed?date=...`,
   /// `OrdersService.listCompletedForOutlet`) — the other half of `listActive`'s exclusion of
   /// COMPLETED. Closes a real gap: once an order settles to COMPLETED it drops off the active
   /// board, and until this existed there was no way back to its detail screen to reprint a
   /// receipt if staff navigated away right after taking payment. See `billing_screen.dart` and
-  /// docs/printing.md.
-  Future<List<Order>> listCompleted() async {
+  /// docs/printing.md. `date` is omitted for "today" (server default) or passed as
+  /// `DateTime.toIso8601String()` — the backend only reads the calendar-day part.
+  Future<List<Order>> listCompleted({DateTime? date}) async {
     try {
-      final response = await _apiClient.dio.get<List<dynamic>>('/orders/completed');
+      final response = await _apiClient.dio.get<List<dynamic>>(
+        '/orders/completed',
+        queryParameters: date != null ? {'date': date.toIso8601String()} : null,
+      );
       return (response.data ?? const [])
           .map((o) => Order.fromJson(o as Map<String, dynamic>))
           .toList();
