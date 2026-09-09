@@ -60,9 +60,21 @@ export class TenantContextStore {
    * to justify, in a comment, why the query it wraps cannot leak cross-tenant data despite
    * skipping the guard (e.g. "returns only a password hash to compare, never a data listing").
    * Grep for `runUnscoped` in code review — every usage should be rare and obviously scoped.
+   *
+   * IMPORTANT (caught on the first real request that ever exercised this — see
+   * docs/troubleshooting.md): `fn` must actually be *awaited inside* this method, not just
+   * invoked and returned. Prisma's query methods return a lazy `PrismaPromise` that doesn't
+   * dispatch the query — and doesn't run `$use` middleware, which is what reads
+   * `bypassTenantGuard` — until something calls `.then()`/awaits it. If this method only
+   * called `fn()` and returned the result without awaiting it here, that dispatch would
+   * happen later, outside `als.run()`'s active scope, and the tenant guard would see no
+   * bound context at all (a hard failure, not a silently-wrong one — see the guard's own
+   * fail-closed design). Wrapping in `async () => await fn()` guarantees the query starts
+   * while still synchronously inside the bound scope, which is what makes AsyncLocalStorage
+   * correctly track it from there on.
    */
-  static runUnscoped<T>(fn: () => T): T {
+  static async runUnscoped<T>(fn: () => T | Promise<T>): Promise<T> {
     const current = this.current ?? {};
-    return this.als.run({ ...current, bypassTenantGuard: true }, fn);
+    return this.als.run({ ...current, bypassTenantGuard: true }, async () => await fn());
   }
 }
