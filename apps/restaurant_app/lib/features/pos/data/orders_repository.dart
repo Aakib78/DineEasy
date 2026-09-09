@@ -29,13 +29,25 @@ class OrdersRepository {
   /// COMPLETED. Closes a real gap: once an order settles to COMPLETED it drops off the active
   /// board, and until this existed there was no way back to its detail screen to reprint a
   /// receipt if staff navigated away right after taking payment. See `billing_screen.dart` and
-  /// docs/printing.md. `date` is omitted for "today" (server default) or passed as
-  /// `DateTime.toIso8601String()` — the backend only reads the calendar-day part.
+  /// docs/printing.md.
+  ///
+  /// `date` is omitted for "today" (server default) or sent as a bare `"YYYY-MM-DD"` — NOT
+  /// `DateTime.toIso8601String()`. That was the original (buggy) approach: `date` here is a
+  /// *local* `DateTime` (`DateTime(y, m, d)` defaults to local time), so its ISO string has no
+  /// `Z`/offset suffix, and a date-*time* string with no offset is parsed by JS's `new Date(...)`
+  /// as local time **in whatever timezone the server process runs in** — not the user's device
+  /// timezone, and not UTC. The backend's `startOfDay()` then extracts UTC year/month/day from
+  /// that misinterpreted instant, silently shifting the requested day (by a few hours or a full
+  /// day, depending on the server's local offset) — which is exactly why "today"'s completed
+  /// orders could go missing. A bare date-only string like `"2026-09-09"` has no such ambiguity:
+  /// per the ECMAScript spec, `new Date("2026-09-09")` is always UTC, matching `startOfDay`'s own
+  /// UTC-based day math exactly. `apps/pos_web`'s `<input type="date">` already sent this same
+  /// bare form and never had the bug — this makes the two clients consistent.
   Future<List<Order>> listCompleted({DateTime? date}) async {
     try {
       final response = await _apiClient.dio.get<List<dynamic>>(
         '/orders/completed',
-        queryParameters: date != null ? {'date': date.toIso8601String()} : null,
+        queryParameters: date != null ? {'date': _isoDate(date)} : null,
       );
       return (response.data ?? const [])
           .map((o) => Order.fromJson(o as Map<String, dynamic>))
@@ -43,6 +55,11 @@ class OrdersRepository {
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
     }
+  }
+
+  static String _isoDate(DateTime date) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${date.year.toString().padLeft(4, '0')}-${two(date.month)}-${two(date.day)}';
   }
 
   Future<Order> getById(String orderId) async {
