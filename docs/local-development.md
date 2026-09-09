@@ -52,7 +52,7 @@ Starts NestJS in watch mode on `http://localhost:3000` (`API_PORT` in `.env`). H
 npm run dev:web
 ```
 
-Starts the Vite dev server (default `http://localhost:5173`), talking to the API via `VITE_API_URL`.
+Starts the Vite dev server bound to all interfaces (`--host`, baked into the `dev` script) — not just `http://localhost:5173`, but also `http://<this-machine-lan-ip>:5173`, so a phone on the same Wi-Fi can load it directly (needed to test the QR menu on a real device; see the LAN-IP note in step 6). Talks to the API via `VITE_API_BASE_URL` — see `apps/customer_web/.env.example` for overriding it from the default `http://localhost:3000/api/v1` when the phone needs the machine's LAN IP instead (again, `localhost` on a phone means the phone itself). Also make sure `.env`'s `CORS_ORIGINS` includes whatever origin the phone actually hits (`http://<lan-ip>:5173`) — see `docs/troubleshooting.md`'s "port-drift" entry for the failure mode when it doesn't.
 
 ## 6. Run the Flutter staff app
 
