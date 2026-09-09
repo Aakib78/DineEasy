@@ -109,6 +109,15 @@ Caught testing the very first full order lifecycle end to end — place an order
 
 Fixed by adding a "Mark served" button to the existing-order banner in `OrderBuilderScreen` (shown when you tap back into a table that already has an order) — visible only when the order is `READY`, the signed-in user has `orders.update`, and there isn't already a serve call in flight. See `docs/flutter-app.md`'s changelog entry for the full detail. Not verified in this environment — no Flutter/Dart SDK here, same limitation as everywhere else Flutter-side (see "Why there's no `android/`..." above) — pending confirmation from a real run.
 
+### Not a bug: manually setting a table's status to "Available" doesn't clear "Order open"
+
+`table.status` (`AVAILABLE`/`OCCUPIED`/`RESERVED`/`DISABLED`) and the "Order open" tint on the POS table grid are two independent signals — changing one never touches the other, on purpose.
+
+- `table.status` is just a flag staff set directly on the table row via table management. It carries no information about orders.
+- "Order open" is computed client-side in `pos_home_screen.dart` from `activeOrdersProvider`, which calls `GET /orders` (`OrdersService.listActiveForOutlet` in `services/api/src/modules/orders/orders.service.ts`). That query returns every order on the outlet whose `status` is **not** `COMPLETED`, `CANCELLED`, or `REFUNDED` — so anything from `DRAFT` all the way through `BILLED`/`PAID` still counts as "active." The screen collects every `tableId` present in that list and tints the matching table orange with "Order open," regardless of `table.status`.
+
+So a table stays "Order open" until its order actually reaches `COMPLETED` (or is cancelled) — walk it forward instead: mark it served (`READY` → `SERVED`, see the entry above), generate the invoice from Billing (`SERVED` → `BILLED`), then record payment covering the full total, which auto-advances `BILLED` → `PAID` → `COMPLETED`. Only then does the order drop out of the active-orders list and the tile clears on its own. Toggling `table.status` back to "Available" is a no-op for this — it doesn't cancel or complete the order underneath it.
+
 ### `docker compose up postgres redis` fails with `address already in use` on port 5432, even though nothing shows up in `lsof`
 
 Seen in practice on macOS with Docker Desktop after an earlier `docker compose up` attempt got interrupted partway (for example, the `web` image build failing per the entry above, or Docker Desktop being restarted mid-`up`) and left a container behind in `Created` state (`docker ps -a` shows it, but never `Up`). Removing that container (`docker rm <name>`) and retrying can still fail with the same port error — Docker Desktop's own internal port-forwarding layer (inside its VM, not your host OS) can hold a stale reservation that a plain container removal doesn't clear, which is also why the host's `lsof -iTCP:5432` shows nothing: the conflict isn't visible at the macOS network level at all.
