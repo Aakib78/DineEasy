@@ -4,6 +4,8 @@ import { NotFoundDomainError } from '../../common/errors/domain-errors';
 import { AuditLogService } from '../audit/audit-log.service';
 import { CreateModifierGroupDto } from './dto/create-modifier-group.dto';
 import { UpdateModifierGroupDto } from './dto/update-modifier-group.dto';
+import { CreateModifierDto } from './dto/create-modifier.dto';
+import { UpdateModifierDto } from './dto/update-modifier.dto';
 
 /**
  * Modifier groups are outlet-scoped and reusable across menu items (e.g. "Spice Level" used
@@ -98,5 +100,85 @@ export class ModifiersService {
     });
 
     return after;
+  }
+
+  /**
+   * Was the biggest gap in this module: `CreateModifierGroupDto.modifiers` only accepted a full
+   * array up front, and `UpdateModifierGroupDto` never touched it — there was no way to add a
+   * modifier to a group after creation (e.g. a new "Extra Cheese" option on an existing
+   * "Toppings" group) short of recreating the whole group. `displayOrder` continues after the
+   * group's current highest so a newly-added modifier lands at the end of the list by default.
+   */
+  async addModifier(
+    organizationId: string,
+    outletId: string,
+    modifierGroupId: string,
+    dto: CreateModifierDto,
+    actorUserId: string,
+  ) {
+    await this.getById(outletId, modifierGroupId); // ownership check
+
+    const highest = await this.prisma.modifier.aggregate({
+      where: { modifierGroupId },
+      _max: { displayOrder: true },
+    });
+
+    const modifier = await this.prisma.modifier.create({
+      data: {
+        modifierGroupId,
+        name: dto.name,
+        priceDelta: dto.priceDelta ?? 0,
+        displayOrder: (highest._max.displayOrder ?? -1) + 1,
+      },
+    });
+
+    await this.auditLog.record({
+      organizationId,
+      outletId,
+      actorUserId,
+      action: 'modifier.created',
+      entityType: 'Modifier',
+      entityId: modifier.id,
+      newState: modifier,
+    });
+
+    return modifier;
+  }
+
+  /** Same gap as `addModifier` but for editing/deactivating one that already exists — a
+   * mispriced modifier (wrong `priceDelta`) or a discontinued one had no fix short of a direct
+   * database edit until now. `Modifier.isActive` was a schema column no endpoint ever set. */
+  async updateModifier(
+    organizationId: string,
+    outletId: string,
+    modifierGroupId: string,
+    modifierId: string,
+    dto: UpdateModifierDto,
+    actorUserId: string,
+  ) {
+    await this.getById(outletId, modifierGroupId); // ownership check
+
+    const before = await this.prisma.modifier.findFirst({
+      where: { id: modifierId, modifierGroupId },
+    });
+    if (!before) throw new NotFoundDomainError('Modifier', modifierId);
+
+    const modifier = await this.prisma.modifier.update({
+      where: { id: modifierId },
+      data: dto,
+    });
+
+    await this.auditLog.record({
+      organizationId,
+      outletId,
+      actorUserId,
+      action: 'modifier.updated',
+      entityType: 'Modifier',
+      entityId: modifierId,
+      previousState: before,
+      newState: modifier,
+    });
+
+    return modifier;
   }
 }

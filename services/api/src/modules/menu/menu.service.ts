@@ -7,6 +7,7 @@ import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreateMenuItemDto } from './dto/create-menu-item.dto';
 import { UpdateMenuItemDto } from './dto/update-menu-item.dto';
 import { UpsertVariantDto } from './dto/upsert-variant.dto';
+import { UpdateVariantDto } from './dto/update-variant.dto';
 
 const ITEM_INCLUDE = {
   variants: { orderBy: { displayOrder: 'asc' as const } },
@@ -276,6 +277,52 @@ export class MenuService {
       action: 'menu_item_variant.created',
       entityType: 'MenuItemVariant',
       entityId: variant.id,
+      newState: variant,
+    });
+
+    return variant;
+  }
+
+  /**
+   * Was a real gap: `MenuItemVariant.isActive`/name/price had schema columns but no endpoint
+   * ever touched them post-creation — a mispriced or discontinued variant (e.g. a "Large" size
+   * that's been dropped) had no way to be fixed or hidden short of editing the database directly.
+   * `isDefault` is exclusive per item (mirrors `createItem`'s own `isDefault ?? i === 0`), so
+   * flipping one variant to default un-defaults the others in the same transaction.
+   */
+  async updateVariant(
+    organizationId: string,
+    outletId: string,
+    menuItemId: string,
+    variantId: string,
+    dto: UpdateVariantDto,
+    actorUserId: string,
+  ) {
+    await this.getItemById(outletId, menuItemId); // ownership check
+
+    const before = await this.prisma.menuItemVariant.findFirst({
+      where: { id: variantId, menuItemId },
+    });
+    if (!before) throw new NotFoundDomainError('MenuItemVariant', variantId);
+
+    const variant = await this.prisma.$transaction(async (tx) => {
+      if (dto.isDefault) {
+        await tx.menuItemVariant.updateMany({
+          where: { menuItemId, id: { not: variantId } },
+          data: { isDefault: false },
+        });
+      }
+      return tx.menuItemVariant.update({ where: { id: variantId }, data: dto });
+    });
+
+    await this.auditLog.record({
+      organizationId,
+      outletId,
+      actorUserId,
+      action: 'menu_item_variant.updated',
+      entityType: 'MenuItemVariant',
+      entityId: variantId,
+      previousState: before,
       newState: variant,
     });
 

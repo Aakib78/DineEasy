@@ -131,7 +131,10 @@ Kitchen display (KDS) and staff/menu management screens are Flutter-only in v1 �
 scoped to the counter-facing POS/Waiter/Billing workflow, not full back-office management.
 Printers landed here first (see "What's built" above) since pos_web already runs on whatever
 machine ends up running `services/print-agent` in the common single-machine deployment, but
-`apps/restaurant_app` now has the same screen too — see docs/flutter-app.md.
+`apps/restaurant_app` now has the same screen too — see docs/flutter-app.md. Menu management
+(categories/items/variants/modifier-groups/tax-groups) is now built, but only in
+`apps/restaurant_app` — see that doc's "Menu management" entry — deliberately not ported here,
+consistent with this section's scope note.
 No offline queue — same LAN-first, no
 guaranteed-offline design as every other v1 client (docs/offline-mode.md); a POS terminal that
 loses the LAN mid-order shows the same "couldn't reach the server" error the guest app does.
