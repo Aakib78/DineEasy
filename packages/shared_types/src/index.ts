@@ -17,12 +17,20 @@
  * migration, since these interfaces are already shaped to match the wire JSON field-for-field.
  *
  * Not included here: anything client-only (e.g. `apps/customer_web`'s cart line items before
- * "Place order" — see `docs/qr-ordering.md`), and the RBAC permission catalog (mirrored
- * separately per-consumer today: `lib/core/rbac/permissions.dart` in the Flutter app, which
- * can't consume a TypeScript package regardless — see docs/flutter-app.md — and no TypeScript
- * consumer needs it yet, so it isn't duplicated here on spec).
+ * "Place order" — see `docs/qr-ordering.md`).
+ *
+ * Also exports `PERMISSIONS` (the RBAC permission-key catalog — added once `apps/pos_web`
+ * became the first TypeScript *staff* frontend and actually needed it for UI gating) and
+ * `theme`/`applyTheme` (the centralized color palette shared by every web app). Both are still
+ * hand-mirrored separately on the Flutter side (`lib/core/rbac/permissions.dart`,
+ * `app.dart`'s `colorSchemeSeed`) since Dart can't import this package — see docs/flutter-app.md.
  */
 
 export * from './qr.js';
 export * from './menu.js';
 export * from './orders.js';
+export * from './billing.js';
+export * from './tables.js';
+export * from './permissions.js';
+export * from './theme.js';
+export * from './id.js';

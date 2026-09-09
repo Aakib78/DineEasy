@@ -7,11 +7,13 @@
     "services/api",
     "services/print-agent",
     "apps/customer_web",
+    "apps/pos_web",
     "packages/shared_types"
   ],
   "scripts": {
     "dev:api": "npm run start:dev --workspace services/api",
     "dev:web": "npm run dev --workspace apps/customer_web",
+    "dev:pos": "npm run dev --workspace apps/pos_web",
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",

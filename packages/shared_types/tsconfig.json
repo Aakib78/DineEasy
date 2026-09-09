@@ -1,7 +1,12 @@
 {
   "compilerOptions": {
     "target": "es2023",
-    "lib": ["ES2023"],
+    // DOM added alongside ES2023 for theme.ts's `applyTheme`, which touches
+    // `document.documentElement` — every consumer of this package is a browser SPA (see
+    // theme.ts's doc comment), so this isn't pulling DOM types into an environment that
+    // shouldn't have them; it just lets this package's own `tsc --noEmit` see what its
+    // consumers already see.
+    "lib": ["ES2023", "DOM"],
     "module": "esnext",
     "moduleResolution": "bundler",
     "verbatimModuleSyntax": true,

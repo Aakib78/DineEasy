@@ -1,9 +1,9 @@
 # DineEasy — development overrides.
 # Usage: docker compose -f infrastructure/docker/docker-compose.yml -f infrastructure/docker/docker-compose.dev.yml up -d
 #
-# In day-to-day dev, most people run `npm run dev:api` / `npm run dev:web` on the host
-# instead of dockerizing api/web, and only use this file for postgres+redis. This override
-# is provided for parity testing ("does it work fully dockerized") and onboarding.
+# In day-to-day dev, most people run `npm run dev:api` / `npm run dev:web` / `npm run dev:pos`
+# on the host instead of dockerizing api/web/pos, and only use this file for postgres+redis.
+# This override is provided for parity testing ("does it work fully dockerized") and onboarding.
 
 services:
   postgres:
@@ -40,3 +40,17 @@ services:
     command: ["npm", "run", "dev", "--", "--host"]
     ports:
       - "5173:5173"
+
+  pos:
+    build:
+      target: development
+    # Same monorepo-root mount reasoning as `web` above.
+    volumes:
+      - ../..:/repo
+      - /repo/node_modules
+      - /repo/apps/pos_web/node_modules
+    environment:
+      VITE_API_BASE_URL: http://localhost:${API_PORT:-3000}/api/v1
+    command: ["npm", "run", "dev", "--", "--host"]
+    ports:
+      - "3001:3001"

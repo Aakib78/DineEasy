@@ -89,6 +89,22 @@ services:
     networks:
       - dineeasy_lan
 
+  pos:
+    build:
+      # Same root-context reasoning as `web` above — this image also depends on the local
+      # workspace package packages/shared_types.
+      context: ../..
+      dockerfile: apps/pos_web/Dockerfile
+      args:
+        VITE_API_BASE_URL: ${API_URL:-http://localhost:3000}/api/v1
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "${POS_WEB_PORT:-8081}:80"
+    networks:
+      - dineeasy_lan
+
 volumes:
   dineeasy_postgres_data:
   dineeasy_redis_data:
