@@ -93,7 +93,7 @@ Fixes, in order of effort:
 
 1. Confirm the server is actually running: `docker compose -f infrastructure/docker/docker-compose.yml ps` should show `api` as healthy.
 2. Confirm the device is on the same LAN/SSID as the server (guest Wi-Fi vs staff Wi-Fi matters — see `docs/architecture.md` §1).
-3. Try manual connection (Settings → Server Connection → Enter address) with the server's LAN IP and port `3000` if LAN discovery hasn't found it — see `docs/offline-mode.md` for how discovery works and why it can fail on some routers.
+3. There's no in-app "find/set the server" screen yet (tracked as a follow-up — see `docs/offline-mode.md` for how LAN discovery is meant to work once implemented); the address is set at launch instead, via `flutter run --dart-define=API_BASE_URL=http://<server-lan-ip>:3000/api/v1` (see `docs/local-development.md` §6). A physical device can't reach your dev machine's `localhost` — it needs the machine's actual LAN IP.
 4. Check the in-app System Status screen — it reports API/DB/Redis reachability independently, which narrows down whether the problem is network or the server process itself.
 
 ### Customer can't load the QR menu on the restaurant's guest Wi-Fi

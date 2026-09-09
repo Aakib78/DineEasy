@@ -56,13 +56,22 @@ Starts the Vite dev server (default `http://localhost:5173`), talking to the API
 
 ## 6. Run the Flutter staff app
 
+This repo intentionally doesn't commit `android/`/`windows/` — they're Flutter-SDK-version-specific generated scaffolding (see "Why there's no `android/`, `ios/`, or `windows/` folder here" in `docs/flutter-app.md`). Generate them once, on whatever machine has the Flutter SDK:
+
 ```bash
 cd apps/restaurant_app
+flutter create . --platforms=android,windows --org com.dineeasy
 flutter pub get
 flutter run -d windows      # or: flutter devices, then -d <android-device-id>
 ```
 
-On first run, point it at your dev API (Settings → Server Connection → `http://localhost:3000`, or your machine's LAN IP if running on a physical Android device/tablet). See `docs/offline-mode.md` for how LAN discovery is meant to work once implemented.
+There's no in-app "find/set the server" screen yet (`lib/core/config/app_config.dart` documents this honestly — it's a planned follow-up, see `docs/offline-mode.md` for how LAN discovery is meant to work once implemented). Point the app at your API with a `--dart-define` at launch instead:
+
+```bash
+flutter run -d windows --dart-define=API_BASE_URL=http://localhost:3000/api/v1
+```
+
+Running on a physical Android device/tablet rather than an emulator on the same machine, use your machine's actual LAN IP instead of `localhost` (a device can't reach your host machine's "localhost" — that resolves to the device itself), e.g. `--dart-define=API_BASE_URL=http://192.168.1.50:3000/api/v1`. Both devices need to be on the same LAN/Wi-Fi (not a guest network with client isolation — see `docs/deployment.md`).
 
 ## 7. Run the print agent (optional — only needed if you have a network thermal printer)
 
