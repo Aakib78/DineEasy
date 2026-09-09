@@ -55,11 +55,20 @@ export class AuditLogService {
     }
   }
 
+  /**
+   * `limit` is defended here too, not just in the controller — an untrusted or malformed value
+   * (NaN, 0, negative) used to flow straight into `Math.min(limit, 500)`, which Prisma's `take`
+   * rejects with a 500 instead of a clean 400 (was a real bug: `GET /audit-logs?limit=abc` threw
+   * a raw Prisma validation error). Includes the actor's name — v1's only consumer is a
+   * human-facing log screen, and a raw `actorUserId` UUID is useless to whoever's reading it.
+   */
   async listForOrganization(organizationId: string, limit = 100) {
+    const safeLimit = Number.isFinite(limit) && limit > 0 ? limit : 100;
     return this.prisma.auditLog.findMany({
       where: { organizationId },
       orderBy: { createdAt: 'desc' },
-      take: Math.min(limit, 500),
+      take: Math.min(safeLimit, 500),
+      include: { actor: { select: { id: true, name: true } } },
     });
   }
 

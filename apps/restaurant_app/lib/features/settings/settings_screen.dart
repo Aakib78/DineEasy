@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/auth/auth_session.dart';
 import '../../core/rbac/permissions.dart';
+import '../audit/audit_log_screen.dart';
 import '../menu_management/menu_management_screen.dart';
 import '../printers/printers_screen.dart';
 
@@ -21,6 +22,7 @@ class SettingsScreen extends ConsumerWidget {
     final user = ref.watch(currentUserProvider);
     final canManagePrinters = user?.hasPermission(Permissions.printersManage) ?? false;
     final canViewMenu = user?.hasPermission(Permissions.menuView) ?? false;
+    final canViewAudit = user?.hasPermission(Permissions.auditView) ?? false;
 
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -84,6 +86,26 @@ class SettingsScreen extends ConsumerWidget {
             leading: Icon(Icons.print_outlined),
             title: Text('Printers'),
             subtitle: Text('Ask an Owner or Manager to configure printers'),
+            enabled: false,
+          ),
+        const Divider(height: 1),
+        // Backend has recorded these since early on (AuditLogService, spec §23) — GET
+        // /audit-logs had no UI consumer anywhere until now.
+        if (canViewAudit)
+          ListTile(
+            leading: const Icon(Icons.history),
+            title: const Text('Audit log'),
+            subtitle: const Text('Menu, pricing, staff, and tax changes across every outlet'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute<void>(builder: (_) => const AuditLogScreen())),
+          )
+        else
+          const ListTile(
+            leading: Icon(Icons.history),
+            title: Text('Audit log'),
+            subtitle: Text('Ask an Owner or Manager for access'),
             enabled: false,
           ),
         const Divider(height: 1),
