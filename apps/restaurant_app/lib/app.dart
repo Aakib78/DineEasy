@@ -4,11 +4,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/routing/app_router.dart';
 
-/// DineEasy's brand color — also the pos_web/customer_web accent (`--accent` in
-/// `packages/shared_types/src/theme.ts`). Dart can't import that TypeScript file (see the
-/// package's doc comment), so this stays the one place in this app to update by hand if the
-/// brand color ever changes; every other color on this page is derived from it below.
-const _brandSeed = Color(0xFFE85D2C);
+/// This app's brand seed color. Used to derive `ColorScheme`s for both light and dark themes —
+/// every other color on this page comes from `_buildTheme` seeding off this value below.
+///
+/// **Diverges from the web apps on purpose**: `pos_web`/`customer_web`'s accent (`--accent` in
+/// `packages/shared_types/src/theme.ts`) is `#E85D2C` (orange) — this used to be kept in sync by
+/// hand with that value (Dart can't import the TypeScript file, see that package's doc comment),
+/// but this app's seed was deliberately changed to a near-white pink instead. If a shared brand
+/// color is wanted again later, update both this constant and `theme.ts`'s `--accent` together;
+/// until then, don't assume they match.
+const _brandSeed = Color(0xFFfdf2f8);
 
 class DineEasyApp extends ConsumerWidget {
   const DineEasyApp({super.key});
