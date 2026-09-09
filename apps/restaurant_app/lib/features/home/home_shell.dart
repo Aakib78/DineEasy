@@ -14,9 +14,9 @@ import '../notifications/notifications_screen.dart';
 import '../notifications/state/notifications_providers.dart';
 import '../pos/pos_home_screen.dart';
 import '../reports/reports_screen.dart';
+import '../settings/settings_screen.dart';
 import '../staff/staff_screen.dart';
 import '../tables/tables_management_screen.dart';
-import 'placeholder_screen.dart';
 
 class _Destination {
   const _Destination({
@@ -79,15 +79,15 @@ final _destinations = <_Destination>[
     label: 'Settings',
     icon: Icons.settings,
     requiredPermission: null,
-    screen: PlaceholderScreen(title: 'Settings', icon: Icons.settings),
+    screen: SettingsScreen(),
   ),
 ];
 
 /// The signed-in staff member's home: a permission-filtered navigation shell around whichever
-/// feature screens exist so far. POS/Tables/Kitchen/etc. are placeholders today — this shell is
-/// the "Foundation + Auth" slice; each destination gets a real screen in its own later slice
-/// (see docs/architecture.md §15), and nothing here needs to change when that happens beyond
-/// swapping `screen:` for the real widget.
+/// feature screens exist so far. Every destination above now has a real screen — Settings was
+/// the last placeholder (see docs/architecture.md §15) until its Printers entry landed; this
+/// shell itself needed no change for that beyond swapping `screen:` for the real widget, which
+/// is the whole point of keeping `_destinations` as plain data.
 class HomeShell extends ConsumerStatefulWidget {
   const HomeShell({super.key});
 
