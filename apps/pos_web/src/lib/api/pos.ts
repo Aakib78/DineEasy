@@ -41,6 +41,10 @@ export const menuApi = {
 
 export const ordersApi = {
   listActive: () => apiRequest<Order[]>('/orders'),
+  // Today's COMPLETED orders — see OrdersService.listCompletedForOutlet's doc comment for why
+  // this exists: it's what makes a "Print bill" reprint reachable again after a cashier
+  // navigates away from an order post-payment, once it's dropped off the active board.
+  listCompleted: () => apiRequest<Order[]>('/orders/completed'),
   getById: (orderId: string) => apiRequest<Order>(`/orders/${orderId}`),
 
   createOrder: (params: {

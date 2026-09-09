@@ -41,6 +41,13 @@ final activeOrdersProvider = FutureProvider.autoDispose<List<Order>>((ref) {
   return ref.watch(ordersRepositoryProvider).listActive();
 });
 
+/// Today's already-COMPLETED orders — see `OrdersRepository.listCompleted`'s doc comment. The
+/// Billing screen shows these below the active list so a fully-paid order stays reachable (and
+/// its receipt reprintable) after it drops off `activeOrdersProvider`.
+final completedOrdersProvider = FutureProvider.autoDispose<List<Order>>((ref) {
+  return ref.watch(ordersRepositoryProvider).listCompleted();
+});
+
 /// A single order, fetched fresh — used by `BillingDetailScreen` rather than trusting whatever
 /// snapshot `activeOrdersProvider`'s list happened to hold when the user tapped into it, since
 /// billing/payment actions need the order's *current* status and payment total, not a possibly

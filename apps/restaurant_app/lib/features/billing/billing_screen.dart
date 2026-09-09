@@ -16,6 +16,13 @@ import 'billing_detail_screen.dart';
 /// endpoint — `GET /orders` already excludes COMPLETED/CANCELLED/REFUNDED, so filtering
 /// client-side to these three statuses is enough; there's no dedicated "orders to bill"
 /// endpoint on the backend.
+///
+/// Also shows today's already-COMPLETED orders below the active list
+/// (`completedOrdersProvider` → `GET /orders/completed`) — closes a real gap: once an order
+/// settles to COMPLETED it drops off the active list above, and until this existed there was no
+/// way back to its detail screen to reprint the receipt if staff navigated away right after
+/// taking payment. See `OrdersService.listCompletedForOutlet`'s doc comment and
+/// docs/printing.md.
 class BillingScreen extends ConsumerStatefulWidget {
   const BillingScreen({super.key});
 
@@ -36,9 +43,13 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
     // getting an order to SERVED, wouldn't show up here until someone happened to pull down.
     // `order.updated` covers both now (`PaymentsService.recordPayment` emits it for every
     // payment, not just ones that fully settle the order — see its doc comment — so a partial
-    // payment recorded elsewhere updates "paid so far" here live too).
+    // payment recorded elsewhere updates "paid so far" here live too). Also covers an order
+    // settling to COMPLETED elsewhere, which is what moves it into "Recently completed" below.
     _orderRealtimeSub = ref.read(realtimeServiceProvider).orderUpdated.listen((_) {
-      if (mounted) ref.invalidate(activeOrdersProvider);
+      if (mounted) {
+        ref.invalidate(activeOrdersProvider);
+        ref.invalidate(completedOrdersProvider);
+      }
     });
   }
 
@@ -51,12 +62,17 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
   @override
   Widget build(BuildContext context) {
     final ordersAsync = ref.watch(activeOrdersProvider);
+    final completedAsync = ref.watch(completedOrdersProvider);
 
     return Scaffold(
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(activeOrdersProvider);
-          await ref.read(activeOrdersProvider.future);
+          ref.invalidate(completedOrdersProvider);
+          await Future.wait<void>([
+            ref.read(activeOrdersProvider.future).then((_) {}),
+            ref.read(completedOrdersProvider.future).then((_) {}),
+          ]);
         },
         child: ordersAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
@@ -80,10 +96,15 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
           ),
           data: (orders) {
             final billable = orders.where((o) => _billableStatuses.contains(o.status)).toList();
+            // Completed orders load independently — a slow/failed fetch there shouldn't block
+            // the active board from rendering, so this only ever adds a section, never an error
+            // state of its own (silently empty on failure is the right degrade here).
+            final completed = completedAsync.asData?.value ?? const <Order>[];
 
-            if (billable.isEmpty) {
-              return ListView(
-                children: [
+            return ListView(
+              padding: const EdgeInsets.all(12),
+              children: [
+                if (billable.isEmpty)
                   Padding(
                     padding: const EdgeInsets.all(32),
                     child: Center(
@@ -92,16 +113,37 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                     ),
+                  )
+                else
+                  for (final order in billable) ...[
+                    _BillableOrderTile(order: order),
+                    const SizedBox(height: 8),
+                  ],
+                if (completed.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Recently completed', style: Theme.of(context).textTheme.titleSmall),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Fully paid, today. Open one to reprint its receipt.',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Theme.of(context).colorScheme.outline,
+                              ),
+                        ),
+                      ],
+                    ),
                   ),
+                  const SizedBox(height: 8),
+                  for (final order in completed) ...[
+                    _BillableOrderTile(order: order),
+                    const SizedBox(height: 8),
+                  ],
                 ],
-              );
-            }
-
-            return ListView.separated(
-              padding: const EdgeInsets.all(12),
-              itemCount: billable.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
-              itemBuilder: (context, index) => _BillableOrderTile(order: billable[index]),
+              ],
             );
           },
         ),
@@ -127,6 +169,7 @@ class _BillableOrderTile extends StatelessWidget {
       OrderStatus.billed when remaining <= Money.zero => ('Fully paid', Colors.green.shade700),
       OrderStatus.billed => ('Awaiting payment', Colors.orange.shade700),
       OrderStatus.paid => ('Settling…', Colors.green.shade700),
+      OrderStatus.completed => ('Completed', Colors.green.shade700),
       _ => ('', Colors.grey),
     };
 

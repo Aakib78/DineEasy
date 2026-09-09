@@ -24,6 +24,23 @@ class OrdersRepository {
     }
   }
 
+  /// Today's already-COMPLETED orders (backend: `GET /orders/completed`,
+  /// `OrdersService.listCompletedForOutlet`) — the other half of `listActive`'s exclusion of
+  /// COMPLETED. Closes a real gap: once an order settles to COMPLETED it drops off the active
+  /// board, and until this existed there was no way back to its detail screen to reprint a
+  /// receipt if staff navigated away right after taking payment. See `billing_screen.dart` and
+  /// docs/printing.md.
+  Future<List<Order>> listCompleted() async {
+    try {
+      final response = await _apiClient.dio.get<List<dynamic>>('/orders/completed');
+      return (response.data ?? const [])
+          .map((o) => Order.fromJson(o as Map<String, dynamic>))
+          .toList();
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
   Future<Order> getById(String orderId) async {
     try {
       final response = await _apiClient.dio.get<Map<String, dynamic>>('/orders/$orderId');
