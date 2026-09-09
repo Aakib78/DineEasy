@@ -2,6 +2,8 @@ import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
 import { ModifiersService } from './modifiers.service';
 import { CreateModifierGroupDto } from './dto/create-modifier-group.dto';
 import { UpdateModifierGroupDto } from './dto/update-modifier-group.dto';
+import { CreateModifierDto } from './dto/create-modifier.dto';
+import { UpdateModifierDto } from './dto/update-modifier.dto';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { PERMISSIONS } from '../../common/rbac/permissions.catalog';
@@ -46,6 +48,40 @@ export class ModifiersController {
       user.organizationId,
       requireActiveOutlet(user),
       id,
+      dto,
+      user.userId,
+    );
+  }
+
+  @Post(':id/modifiers')
+  @RequirePermission(PERMISSIONS.MENU_EDIT)
+  addModifier(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: CreateModifierDto,
+  ) {
+    return this.modifiersService.addModifier(
+      user.organizationId,
+      requireActiveOutlet(user),
+      id,
+      dto,
+      user.userId,
+    );
+  }
+
+  @Patch(':id/modifiers/:modifierId')
+  @RequirePermission(PERMISSIONS.MENU_EDIT)
+  updateModifier(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Param('modifierId') modifierId: string,
+    @Body() dto: UpdateModifierDto,
+  ) {
+    return this.modifiersService.updateModifier(
+      user.organizationId,
+      requireActiveOutlet(user),
+      id,
+      modifierId,
       dto,
       user.userId,
     );

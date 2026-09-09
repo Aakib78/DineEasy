@@ -291,12 +291,39 @@ Kitchen/KDS, Billing, Reports) builds on top of, not those features themselves:
   See `docs/printing.md`'s "Operator visibility" section. Not yet verified in this environment —
   no Flutter/Dart SDK here.
 
+- **Menu management** (`lib/features/menu_management/`, reached via Settings' new "Menu" entry):
+  categories, items (with variants and modifier-group attachment), modifier groups (with
+  individual options), and tax groups — full backend CRUD existed (`MenuController`,
+  `ModifiersController`, `TaxController`) with zero UI anywhere until now, staff could only touch
+  any of it via a raw API call. Built here rather than `apps/pos_web` per docs/pos-web.md's
+  "What's explicitly not built": menu management is Flutter-only in v1. `menu.view`-gated to
+  reach the screen at all; every add/edit affordance additionally checks `menu.edit` (Cashier/
+  Waiter have view-only, so the screen degrades to genuinely read-only rather than just hiding
+  buttons) — tax-group create/edit specifically checks `settings.manage` instead, matching the
+  backend's asymmetry (a Manager with `menu.edit` still can't touch tax groups). Uses a parallel
+  model set (`data/menu_admin_models.dart`) rather than widening
+  `features/pos/data/pos_models.dart` — the pos-cart models are missing `isActive`,
+  `displayOrder`, `sku`, `taxGroupId`, and other fields an edit screen needs, and extending them
+  risked a subtle behavior change in the order-taking flow for a concern it doesn't have.
+  Three real backend gaps got closed alongside this UI (`services/api`, same session): no
+  endpoint ever updated/deactivated a `MenuItemVariant` after creation
+  (`PATCH /menu/items/:id/variants/:variantId`, new `MenuService.updateVariant`); no endpoint
+  added or edited an individual `Modifier` within an existing `ModifierGroup` — the biggest gap,
+  since `CreateModifierGroupDto.modifiers` only ever accepted a full array up front
+  (`POST`/`PATCH /modifier-groups/:id/modifiers[/:modifierId]`, new
+  `ModifiersService.addModifier`/`updateModifier`); and `TaxGroup` had no update/delete endpoint
+  at all (`PATCH /tax-groups/:id`, new `TaxService.update`, name + `isActive` only — component
+  rates still aren't editable in place, see `UpdateTaxGroupDto`'s doc comment). All three follow
+  the same soft-delete-only convention as the rest of this domain. Not yet verified in this
+  environment — no Flutter/Dart SDK here; the backend additions were verified with
+  `tsc --noEmit` (baseline unchanged in kind — see docs/troubleshooting.md).
+
 **Not built yet**: offline/local-cache behavior (tracked with the LAN/offline backend slice —
 docs/offline-mode.md), real OS-level push/local notifications (the in-app inbox above is the
 step before that — it's a poll-driven bell, not a system notification), and the
 Windows/Android platform scaffolding itself (see below). Every permission-gated feature-area
 destination in the nav shell (POS, Tables, Kitchen, Billing, Reports, Staff) — and now Settings,
-via its Printers entry — has a real screen; there are no placeholder destinations left.
+via its Printers and Menu entries — has a real screen; there are no placeholder destinations left.
 
 ## Why there's no `android/`, `ios/`, or `windows/` folder here
 

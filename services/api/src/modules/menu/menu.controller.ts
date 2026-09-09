@@ -5,6 +5,7 @@ import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreateMenuItemDto } from './dto/create-menu-item.dto';
 import { UpdateMenuItemDto } from './dto/update-menu-item.dto';
 import { UpsertVariantDto } from './dto/upsert-variant.dto';
+import { UpdateVariantDto } from './dto/update-variant.dto';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { PERMISSIONS } from '../../common/rbac/permissions.catalog';
@@ -92,6 +93,24 @@ export class MenuController {
       user.organizationId,
       requireActiveOutlet(user),
       id,
+      dto,
+      user.userId,
+    );
+  }
+
+  @Patch('items/:id/variants/:variantId')
+  @RequirePermission(PERMISSIONS.MENU_EDIT)
+  updateVariant(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Param('variantId') variantId: string,
+    @Body() dto: UpdateVariantDto,
+  ) {
+    return this.menuService.updateVariant(
+      user.organizationId,
+      requireActiveOutlet(user),
+      id,
+      variantId,
       dto,
       user.userId,
     );

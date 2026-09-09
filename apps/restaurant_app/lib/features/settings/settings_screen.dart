@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/auth/auth_session.dart';
 import '../../core/rbac/permissions.dart';
+import '../menu_management/menu_management_screen.dart';
 import '../printers/printers_screen.dart';
 
 /// Replaces the old `PlaceholderScreen(title: 'Settings', ...)` in `home_shell.dart` — see
@@ -19,6 +20,7 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(currentUserProvider);
     final canManagePrinters = user?.hasPermission(Permissions.printersManage) ?? false;
+    final canViewMenu = user?.hasPermission(Permissions.menuView) ?? false;
 
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -44,6 +46,27 @@ class SettingsScreen extends ConsumerWidget {
                 ),
               ],
             ),
+          ),
+        const Divider(height: 1),
+        // Categories/items/variants/modifier-groups/tax-groups — full backend CRUD existed with
+        // no UI consumer until now (see docs/pos-web.md's "What's explicitly not built": this is
+        // Flutter-only in v1, deliberately not ported to apps/pos_web).
+        if (canViewMenu)
+          ListTile(
+            leading: const Icon(Icons.restaurant_menu_outlined),
+            title: const Text('Menu'),
+            subtitle: const Text('Categories, items, variants, modifiers, and tax groups'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute<void>(builder: (_) => const MenuManagementScreen())),
+          )
+        else
+          const ListTile(
+            leading: Icon(Icons.restaurant_menu_outlined),
+            title: Text('Menu'),
+            subtitle: Text('Ask an Owner or Manager for menu access'),
+            enabled: false,
           ),
         const Divider(height: 1),
         if (canManagePrinters)
