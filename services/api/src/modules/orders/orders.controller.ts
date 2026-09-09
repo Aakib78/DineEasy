@@ -9,6 +9,7 @@ import { RequirePermission } from '../../common/decorators/require-permission.de
 import { PERMISSIONS } from '../../common/rbac/permissions.catalog';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { requireActiveOutlet } from '../../common/utils/require-active-outlet.util';
+import { startOfDay } from '../reports/reports.service';
 
 /** POS terminal + Flutter Waiter app entry points — see OrdersGuestController for the QR side. */
 @Controller('orders')
@@ -34,6 +35,24 @@ export class OrdersController {
   @RequirePermission(PERMISSIONS.ORDERS_VIEW)
   listActive(@CurrentUser() user: AuthenticatedUser) {
     return this.ordersService.listActiveForOutlet(user.organizationId, requireActiveOutlet(user));
+  }
+
+  /**
+   * Declared before `:id` deliberately — Nest/Express match routes in registration order, so
+   * this static path must come first or `/orders/completed` would be swallowed by `:id` (with
+   * `id` bound to the literal string "completed") and 404 as an order lookup instead. Today's
+   * completed orders only, outlet-local-ish (see `OrdersService.listCompletedForOutlet`'s doc
+   * comment) — this is what makes a "Print bill" reprint reachable again after a cashier
+   * navigates away from `BillingDetailScreen` post-payment; see docs/printing.md.
+   */
+  @Get('completed')
+  @RequirePermission(PERMISSIONS.ORDERS_VIEW)
+  listCompleted(@CurrentUser() user: AuthenticatedUser) {
+    return this.ordersService.listCompletedForOutlet(
+      user.organizationId,
+      requireActiveOutlet(user),
+      startOfDay(new Date()),
+    );
   }
 
   @Get(':id')

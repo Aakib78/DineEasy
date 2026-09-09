@@ -753,6 +753,29 @@ button {
   font-weight: 700;
 }
 
+.billing-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.billing-screen__completed {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.billing-screen__completed-heading {
+  margin: 0;
+  font-size: 15px;
+}
+
+.billing-screen__completed-hint {
+  margin: 0 0 4px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
 .billing-detail__status {
   margin-bottom: 12px;
 }

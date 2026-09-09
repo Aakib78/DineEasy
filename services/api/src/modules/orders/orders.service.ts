@@ -533,6 +533,36 @@ export class OrdersService {
     });
   }
 
+  /**
+   * The other half of `listActiveForOutlet`: once an order settles to `COMPLETED` it drops off
+   * the active board (by design — staff shouldn't have to scroll past finished orders to find
+   * live ones) and every list-driven route to `BillingDetailScreen`/`billing_detail_screen.dart`
+   * goes with it. That used to leave completed orders permanently unreachable in the UI the
+   * moment anyone navigated away — the order's `Print bill` button still worked, nothing there
+   * broke, there was just no way back to it to press it (a cashier who paid, then hit "Back to
+   * Billing" before printing, had no way to get back for a reprint). This is what closes that
+   * gap: `Billing`'s screen in both apps now shows a "Recently completed" list alongside the
+   * active one, sourced from here, each row still linking to the same detail screen.
+   *
+   * Scoped to today (outlet-local midnight to now) rather than all-time — an unbounded
+   * completed-orders list would only grow, and "reprint from 3 weeks ago" isn't a case either
+   * app's UI is trying to solve (that's what `docs/reports.md`'s order history, once built, is
+   * for). `since` is exposed as a parameter purely so callers/tests aren't locked to wall-clock
+   * "now" — both controllers below always pass today's outlet-local start of day.
+   */
+  async listCompletedForOutlet(organizationId: string, outletId: string, since: Date) {
+    return this.prisma.order.findMany({
+      where: {
+        organizationId,
+        outletId,
+        status: 'COMPLETED',
+        updatedAt: { gte: since },
+      },
+      include: ORDER_INCLUDE,
+      orderBy: { updatedAt: 'desc' },
+    });
+  }
+
   // ---------------------------------------------------------------------
   // Internal helpers
   // ---------------------------------------------------------------------
