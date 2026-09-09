@@ -46,4 +46,18 @@ class PrintersRepository {
       throw ApiException.fromDioException(e);
     }
   }
+
+  /// Last 50 jobs for one printer, newest first — no pagination/status filter on this endpoint
+  /// (`PrintersService.listJobs`). Backs the printer health/job-history screen; see
+  /// `PrinterJob`'s doc comment for what's (not) reliably in `payload`.
+  Future<List<PrinterJob>> listJobs(String printerId) async {
+    try {
+      final response = await _apiClient.dio.get<List<dynamic>>('/printers/$printerId/jobs');
+      return (response.data ?? const [])
+          .map((j) => PrinterJob.fromJson(j as Map<String, dynamic>))
+          .toList();
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
 }

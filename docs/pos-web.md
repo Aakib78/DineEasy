@@ -80,9 +80,14 @@ host stand.
   piece `services/print-agent/README.md` always assumed existed ("create a printer via Settings →
   Printers") but that no app actually had until now. `apps/restaurant_app` now has the same
   screen, reached via its own new Settings destination (`lib/features/settings/settings_screen.dart`,
-  `lib/features/printers/printers_screen.dart`) — no longer a placeholder. See docs/printing.md's
-  "Operator visibility" section for exactly what this does and doesn't cover (no job history/queue
-  view yet).
+  `lib/features/printers/printers_screen.dart`) — no longer a placeholder.
+- **Printer job history/health** (`PrinterJobsScreen.tsx`, `/printers/:printerId/jobs`, reached by
+  tapping a printer row): per-printer queue depth, recent-failure count, and job-by-job status —
+  `GET /printers/:id/jobs` existed with no UI consumer until now. `apps/restaurant_app` has the
+  same screen (`printer_jobs_screen.dart`). Read-only (no retry/cancel), last 50 jobs only (the
+  endpoint has no pagination). See docs/printing.md's "Operator visibility" section for the full
+  detail, including how a stuck `QUEUED` job (not just `FAILED` ones) is flagged as a likely
+  agent-down signal.
 - **Discount and refund cards** (`orders.discount`/`payments.refund`-gated, both on
   `BillingDetailScreen.tsx`): these backend endpoints had no UI anywhere until now. `DiscountCard`
   shows the order's (at most one, in v1) applied discount read-only, or an apply form when there

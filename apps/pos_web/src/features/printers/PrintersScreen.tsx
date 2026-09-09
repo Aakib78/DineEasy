@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { Printer, PrinterType, PrinterConnectionType } from '@dineeasy/shared-types';
 import { PERMISSIONS } from '@dineeasy/shared-types';
 import { printersApi } from '../../lib/api/pos';
@@ -21,6 +22,7 @@ import { useAuth } from '../../lib/auth/AuthContext';
  * process on a LAN computer is what does).
  */
 export function PrintersScreen() {
+  const navigate = useNavigate();
   const { hasPermission } = useAuth();
   const canManage = hasPermission(PERMISSIONS.PRINTERS_MANAGE);
 
@@ -73,24 +75,33 @@ export function PrintersScreen() {
       {printers.length === 0 ? (
         <p className="empty-state__hint">No printers configured for this outlet yet.</p>
       ) : (
-        <section className="billing-card">
-          {printers.map((printer, i) => (
-            <div key={printer.id}>
-              {i > 0 && <div className="billing-card__divider" />}
-              <div className="totals-row">
-                <span>
-                  {printer.name} · {printer.type === 'KITCHEN' ? 'Kitchen' : 'Receipt'}
-                  {!printer.isActive ? ' (inactive)' : ''}
-                </span>
-                <span>
-                  {printer.connectionType === 'NETWORK'
-                    ? `${printer.ipAddress ?? '?'}:${printer.port ?? 9100}`
-                    : 'USB'}
-                </span>
+        <>
+          <section className="billing-card">
+            {printers.map((printer, i) => (
+              <div key={printer.id}>
+                {i > 0 && <div className="billing-card__divider" />}
+                <button
+                  type="button"
+                  className="printers-screen__row-button"
+                  onClick={() => navigate(`/printers/${printer.id}/jobs`)}
+                >
+                  <div className="totals-row">
+                    <span>
+                      {printer.name} · {printer.type === 'KITCHEN' ? 'Kitchen' : 'Receipt'}
+                      {!printer.isActive ? ' (inactive)' : ''}
+                    </span>
+                    <span>
+                      {printer.connectionType === 'NETWORK'
+                        ? `${printer.ipAddress ?? '?'}:${printer.port ?? 9100}`
+                        : 'USB'}
+                    </span>
+                  </div>
+                </button>
               </div>
-            </div>
-          ))}
-        </section>
+            ))}
+          </section>
+          <p className="printers-screen__hint">Tap a printer to see its recent job history.</p>
+        </>
       )}
 
       <AddPrinterCard onCreated={() => void load()} />
