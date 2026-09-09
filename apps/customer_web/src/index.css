@@ -1,4 +1,9 @@
 :root {
+  /* Static fallback only — the source of truth is packages/shared_types/src/theme.ts's `theme`
+   * object. main.tsx calls applyTheme() on startup, which overwrites every value below (via an
+   * inline style on this same :root element) before first paint in normal operation, so these
+   * never actually render. Kept in sync by hand as a belt-and-braces fallback for the odd case
+   * a script fails to run before paint — see applyTheme's doc comment for the full reasoning. */
   --accent: #e85d2c;
   --accent-dark: #c94a1f;
   --text: #1c1917;

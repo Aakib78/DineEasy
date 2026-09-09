@@ -12,12 +12,13 @@ This repository is under active vertical-slice development (see `docs/architectu
 dineeasy/
 ├── apps/
 │   ├── restaurant_app/     # Flutter staff app (POS, tables, KDS, admin) — Android + Windows
-│   └── customer_web/       # Customer QR ordering PWA (Vite + React + TS)
+│   ├── customer_web/       # Customer QR ordering PWA (Vite + React + TS)
+│   └── pos_web/            # Browser-based staff POS/billing app (Vite + React + TS)
 ├── services/
 │   ├── api/                  # NestJS + TypeScript backend API
 │   └── print-agent/          # Standalone LAN daemon that drains the PrinterJob queue
 ├── packages/
-│   └── shared_types/         # @dineeasy/shared-types — TS types for apps/customer_web
+│   └── shared_types/         # @dineeasy/shared-types — TS types/RBAC catalog/theme shared by the web apps
 ├── infrastructure/
 │   └── docker/               # docker-compose files for local/dev/test/prod-like deployment
 ├── docs/                      # Architecture & operational documentation
@@ -47,6 +48,10 @@ npm run dev:api
 # In another terminal, start the customer PWA (see docs/customer-web.md)
 cp apps/customer_web/.env.example apps/customer_web/.env.local
 npm run dev:web
+
+# In another terminal, start the POS web app (see docs/pos-web.md)
+cp apps/pos_web/.env.example apps/pos_web/.env.local
+npm run dev:pos
 ```
 
 Then run the Flutter app (first time only, generates the platform folders — see `docs/flutter-app.md`):
@@ -58,7 +63,7 @@ flutter pub get
 flutter run -d windows   # or -d <android-device-id>
 ```
 
-See `docs/local-development.md` for the full walkthrough, `docs/flutter-app.md`/`docs/customer-web.md` for what's implemented in each frontend so far, and `docs/troubleshooting.md` if something doesn't come up.
+See `docs/local-development.md` for the full walkthrough, `docs/flutter-app.md`/`docs/customer-web.md`/`docs/pos-web.md` for what's implemented in each frontend so far, and `docs/troubleshooting.md` if something doesn't come up.
 
 ## Why DineEasy is different
 

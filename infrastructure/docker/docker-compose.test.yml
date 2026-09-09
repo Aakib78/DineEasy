@@ -29,6 +29,9 @@ services:
   web:
     profiles: ["full"]
 
+  pos:
+    profiles: ["full"]
+
 volumes:
   dineeasy_test_postgres_data:
   dineeasy_test_redis_data:
