@@ -26,3 +26,7 @@ services/api/prisma/*.db
 .vscode/*
 !.vscode/extensions.json
 .idea/
+
+# Claude Code's own session output on this machine (bundles, screenshots it saved while working
+# on this repo) — not project source, shouldn't be committed.
+Claude outputs/

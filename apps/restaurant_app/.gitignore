@@ -17,3 +17,14 @@ build/
 /linux/
 /macos/
 /web/
+
+# FVM's own downloaded Flutter SDK versions cache — .fvmrc (the small version *pin*, committed)
+# is what the team shares; this is the multi-hundred-MB download it points at, regenerated
+# locally by `fvm use` on each machine.
+.fvm/
+
+# The default `flutter create .` smoke test — it references `MyApp`/a counter demo that doesn't
+# exist in this app (the real widget is `DineEasyApp` in lib/app.dart), so committing it as-is
+# would commit a test that fails to even compile. Replace with a real smoke test once one can
+# actually be run and verified — this sandbox has no Flutter/Dart SDK (docs/troubleshooting.md).
+test/widget_test.dart
