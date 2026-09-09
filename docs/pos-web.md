@@ -83,6 +83,17 @@ host stand.
   `lib/features/printers/printers_screen.dart`) — no longer a placeholder. See docs/printing.md's
   "Operator visibility" section for exactly what this does and doesn't cover (no job history/queue
   view yet).
+- **Discount and refund cards** (`orders.discount`/`payments.refund`-gated, both on
+  `BillingDetailScreen.tsx`): these backend endpoints had no UI anywhere until now. `DiscountCard`
+  shows the order's (at most one, in v1) applied discount read-only, or an apply form when there
+  isn't one yet and the order isn't financially settled — permanent once applied, no
+  remove/replace endpoint exists. `RefundCard` renders once per payment that's
+  `SUCCEEDED`/`PARTIALLY_REFUNDED` or already has refund history, computes the refundable balance
+  client-side, and calls `initiateRefund` then `approveRefund` back-to-back as one action (v1
+  requires the same permission for both). It warns before submitting that even a small partial
+  refund flips a PAID/COMPLETED order's whole status to REFUNDED. `apps/restaurant_app` has the
+  same two cards — see docs/flutter-app.md — and full backend detail is in docs/payments.md's
+  Refunds section.
 
 ## Centralized color theme
 
@@ -114,9 +125,7 @@ scoped to the counter-facing POS/Waiter/Billing workflow, not full back-office m
 Printers landed here first (see "What's built" above) since pos_web already runs on whatever
 machine ends up running `services/print-agent` in the common single-machine deployment, but
 `apps/restaurant_app` now has the same screen too — see docs/flutter-app.md.
-Discounts (`orders.discount`) and refunds (`payments.refund`) have backend endpoints and RBAC
-permission keys but no UI here yet (the Flutter app doesn't have discount/refund UI either — both
-are tracked as a follow-up, not specific to this app). No offline queue — same LAN-first, no
+No offline queue — same LAN-first, no
 guaranteed-offline design as every other v1 client (docs/offline-mode.md); a POS terminal that
 loses the LAN mid-order shows the same "couldn't reach the server" error the guest app does.
 

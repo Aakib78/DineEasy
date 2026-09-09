@@ -319,6 +319,38 @@ String paymentMethodToJson(PaymentMethod method) => switch (method) {
   PaymentMethod.other => 'OTHER',
 };
 
+/// A refund only ever moves `PENDING` -> `PROCESSED` in v1 — `PaymentsRepository.initiateRefund`
+/// creates it, `approveRefund` (same `payments.refund` permission, no separate approver role)
+/// immediately processes it. `APPROVED`/`REJECTED` are reserved schema values no endpoint sets
+/// yet — see `PaymentsService.approveRefund`'s doc comment on the backend. Refunds never mutate
+/// `Payment.amount`; a payment's refundable balance is always `amount - sum(refunds where
+/// status == 'PROCESSED')`, computed client-side — see `billing_detail_screen.dart`.
+class Refund {
+  const Refund({
+    required this.id,
+    required this.paymentId,
+    required this.amount,
+    required this.reason,
+    required this.status,
+  });
+
+  factory Refund.fromJson(Map<String, dynamic> json) => Refund(
+    id: json['id'] as String,
+    paymentId: json['paymentId'] as String,
+    amount: json['amount'].toString(),
+    reason: json['reason'] as String?,
+    status: json['status'] as String? ?? 'PENDING',
+  );
+
+  final String id;
+  final String paymentId;
+  final String amount;
+  final String? reason;
+  final String status;
+
+  bool get isProcessed => status == 'PROCESSED';
+}
+
 /// Only `SUCCEEDED` payments count toward "how much of this order has been paid" — see
 /// `PaymentsService.sumSucceeded` on the backend, which this mirrors for the same "remaining
 /// balance" display in `lib/features/billing/`. v1's `ManualPaymentProvider` always creates a
@@ -326,22 +358,65 @@ String paymentMethodToJson(PaymentMethod method) => switch (method) {
 /// see PaymentsService's class doc comment), so `PENDING`/`FAILED` are realistically only seen
 /// if a future real payment gateway is wired up; a client-gone-stale on the same order (POS +
 /// Billing open on two terminals) is the only v1 case a non-SUCCEEDED status shows up here.
+/// `refunds` is only ever populated when this came from `PaymentsRepository.listForOrder`
+/// (`GET /orders/:orderId/payments`) — the `payments` embedded on `Order` (from `GET
+/// /orders/:id`) does NOT include it (`ORDER_INCLUDE.payments` on the backend has no nested
+/// `refunds` include), so it defaults to empty there rather than being a nullable tri-state.
 class PaymentSummary {
-  const PaymentSummary({required this.id, required this.method, required this.status, required this.amount});
+  const PaymentSummary({
+    required this.id,
+    required this.method,
+    required this.status,
+    required this.amount,
+    this.refunds = const [],
+  });
 
   factory PaymentSummary.fromJson(Map<String, dynamic> json) => PaymentSummary(
     id: json['id'] as String,
     method: _paymentMethodFromJson(json['method'] as String? ?? 'OTHER'),
     status: json['status'] as String? ?? 'PENDING',
     amount: json['amount'].toString(),
+    refunds: (json['refunds'] as List<dynamic>? ?? const [])
+        .map((r) => Refund.fromJson(r as Map<String, dynamic>))
+        .toList(),
   );
 
   final String id;
   final PaymentMethod method;
   final String status;
   final String amount;
+  final List<Refund> refunds;
 
   bool get isSucceeded => status == 'SUCCEEDED';
+}
+
+/// One row per discount applied to an order — v1 allows at most one per order (see
+/// `OrdersService.applyDiscount`'s doc comment; there's no "remove/replace discount" endpoint,
+/// so once applied a discount is permanent for that order). `value` is the raw number staff
+/// entered (a percent or a rupee amount depending on `type`); `amount` is the computed rupee
+/// amount actually applied (already reflected in `Order.discountTotal`).
+class DiscountApplication {
+  const DiscountApplication({
+    required this.id,
+    required this.type,
+    required this.value,
+    required this.amount,
+    required this.reason,
+  });
+
+  factory DiscountApplication.fromJson(Map<String, dynamic> json) => DiscountApplication(
+    id: json['id'] as String,
+    type: json['type'] as String? ?? 'FIXED',
+    value: json['value'].toString(),
+    amount: json['amount'].toString(),
+    reason: json['reason'] as String?,
+  );
+
+  final String id;
+  final String type; // 'PERCENTAGE' | 'FIXED'
+  final String value;
+  final String amount;
+  final String? reason;
 }
 
 class Order {
@@ -359,6 +434,7 @@ class Order {
     required this.total,
     required this.items,
     required this.payments,
+    this.discounts = const [],
   });
 
   factory Order.fromJson(Map<String, dynamic> json) {
@@ -381,8 +457,14 @@ class Order {
       // `payments` is only present on GET /orders and GET /orders/:id (ORDER_INCLUDE on the
       // backend) — every call site in this app goes through one of those, so this never needs
       // a "not fetched yet" tri-state, just "no payments recorded yet" when the list is empty.
+      // These entries never carry `refunds` though — see PaymentSummary's doc comment.
       payments: (json['payments'] as List<dynamic>? ?? const [])
           .map((p) => PaymentSummary.fromJson(p as Map<String, dynamic>))
+          .toList(),
+      // `discounts` — present alongside `payments` (ORDER_INCLUDE.discounts on the backend). At
+      // most one entry in v1 — see DiscountApplication's doc comment.
+      discounts: (json['discounts'] as List<dynamic>? ?? const [])
+          .map((d) => DiscountApplication.fromJson(d as Map<String, dynamic>))
           .toList(),
     );
   }
@@ -400,4 +482,5 @@ class Order {
   final String total;
   final List<OrderItemSummary> items;
   final List<PaymentSummary> payments;
+  final List<DiscountApplication> discounts;
 }

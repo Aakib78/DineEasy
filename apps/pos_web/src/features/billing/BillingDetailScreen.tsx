@@ -1,9 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Decimal from 'decimal.js';
-import type { Order, Invoice, PaymentMethod } from '@dineeasy/shared-types';
+import type {
+  Order,
+  Invoice,
+  PaymentMethod,
+  PaymentSummary,
+  DiscountType,
+  DiscountApplication,
+} from '@dineeasy/shared-types';
 import { PERMISSIONS } from '@dineeasy/shared-types';
-import { billingApi, ordersApi } from '../../lib/api/pos';
+import { billingApi, ordersApi, paymentsApi } from '../../lib/api/pos';
 import { ApiError } from '../../lib/api/client';
 import { formatMoney } from '../../lib/cart/price';
 import { useAuth } from '../../lib/auth/AuthContext';
@@ -29,6 +36,23 @@ const METHOD_LABELS: Record<PaymentMethod, string> = {
   OTHER: 'Other',
 };
 
+const PAYMENT_STATUS_LABELS: Record<PaymentSummary['status'], string> = {
+  PENDING: 'Pending',
+  PROCESSING: 'Processing',
+  SUCCEEDED: 'Succeeded',
+  FAILED: 'Failed',
+  REFUNDED: 'Refunded',
+  PARTIALLY_REFUNDED: 'Partially refunded',
+};
+
+// Discount can only be applied before money has moved — matches OrdersService.applyDiscount's
+// `isOrderFinanciallySettled` guard on the backend.
+const FINANCIALLY_SETTLED: ReadonlySet<Order['status']> = new Set(['PAID', 'COMPLETED', 'CANCELLED', 'REFUNDED']);
+
+// A payment can only be refunded once it has actually succeeded (or was already partially
+// refunded) — matches PaymentsService.initiateRefund's status guard on the backend.
+const REFUNDABLE_PAYMENT_STATUSES: ReadonlySet<PaymentSummary['status']> = new Set(['SUCCEEDED', 'PARTIALLY_REFUNDED']);
+
 /**
  * One order's billing flow: SERVED → generate an invoice (`POST /orders/:id/invoice`) →
  * BILLED → record payment(s) (`POST /orders/:id/payments`, split payments allowed) → the
@@ -43,6 +67,11 @@ export function BillingDetailScreen() {
   const { hasPermission } = useAuth();
 
   const [order, setOrder] = useState<Order | null>(null);
+  // Fetched separately from `order.payments` — that embedded array (from `GET /orders/:id`)
+  // doesn't include each payment's `refunds`, only `GET /orders/:orderId/payments` does (see
+  // `paymentsApi.list`'s doc comment). This is also the source of truth for the Payments section
+  // and the remaining-balance calc below, so refund status is reflected everywhere consistently.
+  const [payments, setPayments] = useState<PaymentSummary[]>([]);
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -53,6 +82,8 @@ export function BillingDetailScreen() {
   const canBill = hasPermission(PERMISSIONS.BILLING_CREATE);
   const canTakePayment = hasPermission(PERMISSIONS.PAYMENTS_TAKE);
   const canView = hasPermission(PERMISSIONS.BILLING_VIEW);
+  const canDiscount = hasPermission(PERMISSIONS.ORDERS_DISCOUNT);
+  const canRefund = hasPermission(PERMISSIONS.PAYMENTS_REFUND);
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -65,6 +96,13 @@ export function BillingDetailScreen() {
         } catch {
           setInvoice(null);
         }
+      }
+      try {
+        setPayments(await paymentsApi.list(orderId));
+      } catch {
+        // Non-fatal — the rest of the screen still works off `fetched`, it just won't show
+        // per-payment refund history until this succeeds on a retry/refresh.
+        setPayments([]);
       }
     } catch (err) {
       setLoadError(err instanceof ApiError ? err.message : 'Could not load this order.');
@@ -124,11 +162,13 @@ export function BillingDetailScreen() {
   if (!order) return <p className="loading-text">Loading…</p>;
 
   const activeItems = order.items.filter((i) => !i.isCancelled);
-  const paidSoFar = (order.payments ?? [])
+  const paidSoFar = payments
     .filter((p) => p.status === 'SUCCEEDED')
     .reduce((sum, p) => sum.plus(p.amount), new Decimal(0));
   const total = new Decimal(order.total);
   const remaining = total.minus(paidSoFar);
+  const hasDiscount = (order.discounts?.length ?? 0) > 0;
+  const showDiscountCard = hasDiscount || !FINANCIALLY_SETTLED.has(order.status);
 
   return (
     <div className="billing-detail">
@@ -180,6 +220,15 @@ export function BillingDetailScreen() {
         </div>
       </section>
 
+      {showDiscountCard && (
+        <DiscountCard
+          orderId={order.id}
+          discount={order.discounts?.[0] ?? null}
+          canDiscount={canDiscount}
+          onApplied={() => void load()}
+        />
+      )}
+
       {order.status === 'SERVED' ? (
         <section className="billing-card">
           <p>
@@ -226,14 +275,14 @@ export function BillingDetailScreen() {
         )
       )}
 
-      {(order.payments?.length ?? 0) > 0 && (
+      {payments.length > 0 && (
         <section className="billing-card">
           <h2>Payments</h2>
           <div className="billing-card__divider" />
-          {order.payments!.map((payment) => (
+          {payments.map((payment) => (
             <div className="totals-row" key={payment.id}>
               <span>
-                {METHOD_LABELS[payment.method]} · {payment.status}
+                {METHOD_LABELS[payment.method]} · {PAYMENT_STATUS_LABELS[payment.status]}
               </span>
               <span>{formatMoney(payment.amount)}</span>
             </div>
@@ -245,6 +294,12 @@ export function BillingDetailScreen() {
           </div>
         </section>
       )}
+
+      {payments
+        .filter((p) => REFUNDABLE_PAYMENT_STATUSES.has(p.status) || (p.refunds?.length ?? 0) > 0)
+        .map((payment) => (
+          <RefundCard key={payment.id} payment={payment} canRefund={canRefund} onRefunded={() => void load()} />
+        ))}
 
       {order.status === 'BILLED' && remaining.greaterThan(0) && (
         <RecordPaymentCard
@@ -359,6 +414,247 @@ function RecordPaymentCard({
       <button className="primary-button" onClick={() => void handleSubmit()} disabled={submitting}>
         {submitting ? 'Recording…' : 'Record payment'}
       </button>
+    </section>
+  );
+}
+
+/** Shows the order's (at most one, in v1) applied discount, or lets a manager apply one.
+ * `discount` is `null` until `OrdersService.applyDiscount` has been called — there is no
+ * "remove/replace" endpoint, so once applied this card becomes permanently read-only for that
+ * order (the apply form only ever renders when `discount` is still `null`). */
+function DiscountCard({
+  orderId,
+  discount,
+  canDiscount,
+  onApplied,
+}: {
+  orderId: string;
+  discount: DiscountApplication | null;
+  canDiscount: boolean;
+  onApplied: () => void;
+}) {
+  const [type, setType] = useState<DiscountType>('PERCENTAGE');
+  const [value, setValue] = useState('');
+  const [reason, setReason] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (discount) {
+    return (
+      <section className="billing-card">
+        <h2>Discount</h2>
+        <p>
+          {discount.type === 'PERCENTAGE' ? `${discount.value}% off` : `${formatMoney(discount.value)} off`}
+          {' — '}
+          {formatMoney(discount.amount)} applied
+        </p>
+        {discount.reason && <p className="billing-detail__print-hint">Reason: {discount.reason}</p>}
+      </section>
+    );
+  }
+
+  if (!canDiscount) {
+    return (
+      <section className="billing-card">
+        <p>No discount applied — ask someone with discount permission if one is needed.</p>
+      </section>
+    );
+  }
+
+  async function handleSubmit() {
+    const trimmed = value.trim();
+    if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) {
+      setError('Enter a valid amount.');
+      return;
+    }
+    const parsed = new Decimal(trimmed);
+    if (parsed.lessThanOrEqualTo(0)) {
+      setError('Enter a valid amount.');
+      return;
+    }
+    if (type === 'PERCENTAGE' && parsed.greaterThan(100)) {
+      setError('A percentage discount cannot exceed 100%.');
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      await ordersApi.discount(orderId, {
+        type,
+        value: parsed.toNumber(),
+        ...(reason.trim() ? { reason: reason.trim() } : {}),
+      });
+      onApplied();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not apply this discount.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <section className="billing-card">
+      <h2>Discount</h2>
+
+      <div className="payment-method-row">
+        {(['PERCENTAGE', 'FIXED'] as DiscountType[]).map((t) => (
+          <button
+            key={t}
+            className={`method-chip${type === t ? ' method-chip--active' : ''}`}
+            onClick={() => setType(t)}
+          >
+            {t === 'PERCENTAGE' ? 'Percentage' : 'Fixed amount'}
+          </button>
+        ))}
+      </div>
+
+      <label className="field">
+        {type === 'PERCENTAGE' ? 'Percent off' : 'Amount off'}
+        <input
+          type="text"
+          inputMode="decimal"
+          value={value}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (v === '' || /^\d*\.?\d{0,2}$/.test(v)) setValue(v);
+          }}
+        />
+      </label>
+
+      <label className="field">
+        Reason (optional)
+        <input type="text" value={reason} onChange={(e) => setReason(e.target.value)} />
+      </label>
+
+      {error && <p className="error-banner">{error}</p>}
+
+      <button className="primary-button" onClick={() => void handleSubmit()} disabled={submitting}>
+        {submitting ? 'Applying…' : 'Apply discount'}
+      </button>
+    </section>
+  );
+}
+
+/** One card per refundable (or already-refunded) payment. A refund is two backend calls made
+ * back-to-back here — `initiateRefund` then `approveRefund` — since v1 requires the same
+ * `payments.refund` permission for both and has no separate approver role to hand off to (see
+ * `paymentsApi`'s doc comment). **Approving any refund on a PAID/COMPLETED order's payment flips
+ * the whole order to REFUNDED, even for a small partial amount** — this card says so up front
+ * rather than letting that surprise someone after the fact. */
+function RefundCard({
+  payment,
+  canRefund,
+  onRefunded,
+}: {
+  payment: PaymentSummary;
+  canRefund: boolean;
+  onRefunded: () => void;
+}) {
+  const [amount, setAmount] = useState('');
+  const [reason, setReason] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refunds = payment.refunds ?? [];
+  const refundedSoFar = refunds
+    .filter((r) => r.status === 'PROCESSED')
+    .reduce((sum, r) => sum.plus(r.amount), new Decimal(0));
+  const refundable = new Decimal(payment.amount).minus(refundedSoFar);
+
+  async function handleSubmit() {
+    const trimmed = amount.trim();
+    if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) {
+      setError('Enter a valid amount.');
+      return;
+    }
+    const parsed = new Decimal(trimmed);
+    if (parsed.lessThanOrEqualTo(0)) {
+      setError('Enter a valid amount.');
+      return;
+    }
+    if (parsed.greaterThan(refundable)) {
+      setError(`Amount exceeds the refundable balance of ${formatMoney(refundable)}.`);
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      const refund = await paymentsApi.initiateRefund(payment.id, {
+        amount: parsed.toFixed(2),
+        ...(reason.trim() ? { reason: reason.trim() } : {}),
+      });
+      await paymentsApi.approveRefund(refund.id);
+      onRefunded();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not process this refund.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <section className="billing-card">
+      <h2>
+        Refund — {METHOD_LABELS[payment.method]} {formatMoney(payment.amount)}
+      </h2>
+
+      {refunds.length > 0 && (
+        <>
+          <div className="billing-card__divider" />
+          {refunds.map((r) => (
+            <div className="totals-row" key={r.id}>
+              <span>
+                {r.status === 'PROCESSED' ? 'Refunded' : r.status === 'PENDING' ? 'Refund pending' : r.status}
+                {r.reason ? ` — ${r.reason}` : ''}
+              </span>
+              <span>{formatMoney(r.amount)}</span>
+            </div>
+          ))}
+          <div className="billing-card__divider" />
+        </>
+      )}
+
+      {refundable.lessThanOrEqualTo(0) ? (
+        <p className="billing-detail__print-hint">Fully refunded.</p>
+      ) : !canRefund ? (
+        <p>
+          Refundable balance: {formatMoney(refundable)} — ask someone with refund permission to process it.
+        </p>
+      ) : (
+        <>
+          <p className="billing-detail__print-hint">
+            Refundable balance: {formatMoney(refundable)}. Processing a refund — even a partial one — marks this
+            order's payment as refunded and, once the order is paid/completed, moves the whole order to Refunded.
+            This can't be undone.
+          </p>
+
+          <label className="field">
+            Amount
+            <input
+              type="text"
+              inputMode="decimal"
+              value={amount}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === '' || /^\d*\.?\d{0,2}$/.test(v)) setAmount(v);
+              }}
+            />
+          </label>
+
+          <label className="field">
+            Reason (optional)
+            <input type="text" value={reason} onChange={(e) => setReason(e.target.value)} />
+          </label>
+
+          {error && <p className="error-banner">{error}</p>}
+
+          <button className="primary-button" onClick={() => void handleSubmit()} disabled={submitting}>
+            {submitting ? 'Processing…' : 'Process refund'}
+          </button>
+        </>
+      )}
     </section>
   );
 }

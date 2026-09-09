@@ -9,6 +9,20 @@ import '../../core/rbac/permissions.dart';
 import '../pos/data/pos_models.dart';
 import '../pos/state/pos_providers.dart';
 import 'state/billing_providers.dart';
+import 'state/payments_providers.dart';
+
+// Discount can only be applied before money has moved — matches
+// OrdersService.applyDiscount's `isOrderFinanciallySettled` guard on the backend.
+const _financiallySettledStatuses = {
+  OrderStatus.paid,
+  OrderStatus.completed,
+  OrderStatus.cancelled,
+  OrderStatus.refunded,
+};
+
+// A payment can only be refunded once it has actually succeeded (or was already partially
+// refunded) — matches PaymentsService.initiateRefund's status guard on the backend.
+const _refundablePaymentStatuses = {'SUCCEEDED', 'PARTIALLY_REFUNDED'};
 
 /// One order's billing flow: SERVED → generate an invoice (`POST /orders/:id/invoice`) →
 /// BILLED → record payment(s) (`POST /orders/:id/payments`, one or more, split payments
@@ -61,12 +75,25 @@ class _BillingDetailBody extends ConsumerWidget {
     final canBill = ref.watch(currentUserProvider)?.hasPermission(Permissions.billingCreate) ?? false;
     final canTakePayment =
         ref.watch(currentUserProvider)?.hasPermission(Permissions.paymentsTake) ?? false;
+    final canDiscount = ref.watch(currentUserProvider)?.hasPermission(Permissions.ordersDiscount) ?? false;
+    final canRefund = ref.watch(currentUserProvider)?.hasPermission(Permissions.paymentsRefund) ?? false;
 
-    final paidSoFar = order.payments
+    // `paymentsForOrderProvider` is the only source that carries each payment's `refunds` — see
+    // its doc comment. While it's still loading (or if it errors — non-fatal, matches the
+    // invoice-fetch fallback pattern above), fall back to `order.payments` so the existing
+    // payments/paid-so-far display doesn't regress or flash empty; it just won't have refund
+    // history until the richer fetch completes.
+    final paymentsAsync = ref.watch(paymentsForOrderProvider(order.id));
+    final payments = paymentsAsync.maybeWhen(data: (p) => p, orElse: () => order.payments);
+
+    final paidSoFar = payments
         .where((p) => p.isSucceeded)
         .fold(Money.zero, (sum, p) => sum + Money.parse(p.amount));
     final total = Money.parse(order.total);
     final remaining = total - paidSoFar;
+
+    final hasDiscount = order.discounts.isNotEmpty;
+    final showDiscountCard = hasDiscount || !_financiallySettledStatuses.contains(order.status);
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -79,18 +106,26 @@ class _BillingDetailBody extends ConsumerWidget {
         Text('Status: ${_statusLabel(order.status)}', style: Theme.of(context).textTheme.bodyMedium),
         const SizedBox(height: 16),
         _OrderItemsCard(order: order),
+        if (showDiscountCard) ...[
+          const SizedBox(height: 16),
+          _DiscountCard(
+            orderId: order.id,
+            discount: order.discounts.isNotEmpty ? order.discounts.first : null,
+            canDiscount: canDiscount,
+          ),
+        ],
         const SizedBox(height: 16),
         if (order.status == OrderStatus.served)
           _GenerateBillCard(order: order, canBill: canBill)
         else
           _InvoiceCard(orderId: order.id),
         const SizedBox(height: 16),
-        if (order.payments.isNotEmpty) _PaymentsCard(order: order, paidSoFar: paidSoFar),
+        if (payments.isNotEmpty) _PaymentsCard(payments: payments, paidSoFar: paidSoFar),
         if (order.status == OrderStatus.billed && remaining > Money.zero) ...[
           const SizedBox(height: 16),
           _RecordPaymentCard(order: order, remaining: remaining, canTakePayment: canTakePayment),
         ],
-        if (order.status == OrderStatus.paid || remaining <= Money.zero && order.payments.isNotEmpty) ...[
+        if (order.status == OrderStatus.paid || remaining <= Money.zero && payments.isNotEmpty) ...[
           const SizedBox(height: 16),
           Card(
             color: Theme.of(context).colorScheme.secondaryContainer,
@@ -106,6 +141,11 @@ class _BillingDetailBody extends ConsumerWidget {
             ),
           ),
         ],
+        for (final payment in payments)
+          if (_refundablePaymentStatuses.contains(payment.status) || payment.refunds.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            _RefundCard(orderId: order.id, payment: payment, canRefund: canRefund),
+          ],
       ],
     );
   }
@@ -398,9 +438,9 @@ class _PrintBillButtonState extends ConsumerState<_PrintBillButton> {
 }
 
 class _PaymentsCard extends StatelessWidget {
-  const _PaymentsCard({required this.order, required this.paidSoFar});
+  const _PaymentsCard({required this.payments, required this.paidSoFar});
 
-  final Order order;
+  final List<PaymentSummary> payments;
   final Money paidSoFar;
 
   @override
@@ -413,13 +453,13 @@ class _PaymentsCard extends StatelessWidget {
           children: [
             Text('Payments', style: Theme.of(context).textTheme.titleMedium),
             const Divider(),
-            for (final payment in order.payments)
+            for (final payment in payments)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 2),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('${_methodLabel(payment.method)} · ${payment.status}'),
+                    Text('${_methodLabel(payment.method)} · ${_paymentStatusLabel(payment.status)}'),
                     Text(Money.parse(payment.amount).format()),
                   ],
                 ),
@@ -445,6 +485,16 @@ class _PaymentsCard extends StatelessWidget {
     PaymentMethod.other => 'Other',
   };
 }
+
+String _paymentStatusLabel(String status) => switch (status) {
+  'PENDING' => 'Pending',
+  'PROCESSING' => 'Processing',
+  'SUCCEEDED' => 'Succeeded',
+  'FAILED' => 'Failed',
+  'REFUNDED' => 'Refunded',
+  'PARTIALLY_REFUNDED' => 'Partially refunded',
+  _ => status,
+};
 
 class _RecordPaymentCard extends ConsumerStatefulWidget {
   const _RecordPaymentCard({required this.order, required this.remaining, required this.canTakePayment});
@@ -577,6 +627,316 @@ class _RecordPaymentCardState extends ConsumerState<_RecordPaymentCard> {
           .recordPayment(widget.order.id, method: _method, amount: amount.toPlainString());
       ref.invalidate(orderByIdProvider(widget.order.id));
       ref.invalidate(activeOrdersProvider);
+      ref.invalidate(paymentsForOrderProvider(widget.order.id));
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+}
+
+/// Shows the order's (at most one, in v1) applied discount, or lets a manager apply one.
+/// `discount` is `null` until `OrdersRepository.applyDiscount` has been called — there is no
+/// "remove/replace" endpoint, so once applied this card becomes permanently read-only for that
+/// order (the apply form only ever renders when `discount` is still `null`). Mirrors
+/// `apps/pos_web/src/features/billing/BillingDetailScreen.tsx`'s `DiscountCard`.
+class _DiscountCard extends ConsumerStatefulWidget {
+  const _DiscountCard({required this.orderId, required this.discount, required this.canDiscount});
+
+  final String orderId;
+  final DiscountApplication? discount;
+  final bool canDiscount;
+
+  @override
+  ConsumerState<_DiscountCard> createState() => _DiscountCardState();
+}
+
+class _DiscountCardState extends ConsumerState<_DiscountCard> {
+  String _type = 'PERCENTAGE';
+  final _valueController = TextEditingController();
+  final _reasonController = TextEditingController();
+  bool _submitting = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _valueController.dispose();
+    _reasonController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final discount = widget.discount;
+    if (discount != null) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Discount', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 4),
+              Text(
+                discount.type == 'PERCENTAGE'
+                    ? '${discount.value}% off — ${Money.parse(discount.amount).format()} applied'
+                    : '${Money.parse(discount.value).format()} off — ${Money.parse(discount.amount).format()} applied',
+              ),
+              if (discount.reason != null && discount.reason!.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  'Reason: ${discount.reason}',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (!widget.canDiscount) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: Text('No discount applied — ask someone with discount permission if one is needed.'),
+        ),
+      );
+    }
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Discount', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 12),
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'PERCENTAGE', label: Text('Percentage')),
+                ButtonSegment(value: 'FIXED', label: Text('Fixed amount')),
+              ],
+              selected: {_type},
+              onSelectionChanged: (selection) => setState(() => _type = selection.first),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _valueController,
+              decoration: InputDecoration(
+                labelText: _type == 'PERCENTAGE' ? 'Percent off' : 'Amount off',
+                border: const OutlineInputBorder(),
+              ),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [
+                TextInputFormatter.withFunction((oldValue, newValue) {
+                  if (newValue.text.isEmpty) return newValue;
+                  return RegExp(r'^\d*\.?\d{0,2}$').hasMatch(newValue.text) ? newValue : oldValue;
+                }),
+              ],
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _reasonController,
+              decoration: const InputDecoration(labelText: 'Reason (optional)', border: OutlineInputBorder()),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            ],
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: _submitting ? null : _submit,
+              child: Text(_submitting ? 'Applying…' : 'Apply discount'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _submit() async {
+    final raw = _valueController.text.trim();
+    final parsed = double.tryParse(raw);
+    if (parsed == null || parsed <= 0) {
+      setState(() => _error = 'Enter a valid amount.');
+      return;
+    }
+    if (_type == 'PERCENTAGE' && parsed > 100) {
+      setState(() => _error = 'A percentage discount cannot exceed 100%.');
+      return;
+    }
+
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+
+    try {
+      await ref
+          .read(ordersRepositoryProvider)
+          .applyDiscount(widget.orderId, type: _type, value: parsed, reason: _reasonController.text.trim());
+      ref.invalidate(orderByIdProvider(widget.orderId));
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+}
+
+/// One card per refundable (or already-refunded) payment. A refund is two backend calls made
+/// back-to-back here — `initiateRefund` then `approveRefund` — since v1 requires the same
+/// `payments.refund` permission for both and has no separate approver role to hand off to (see
+/// `PaymentsRepository`'s doc comment). **Approving any refund on a PAID/COMPLETED order's
+/// payment flips the whole order to REFUNDED, even for a small partial amount** — this card says
+/// so up front rather than letting that surprise someone after the fact. Mirrors
+/// `apps/pos_web/src/features/billing/BillingDetailScreen.tsx`'s `RefundCard`.
+class _RefundCard extends ConsumerStatefulWidget {
+  const _RefundCard({required this.orderId, required this.payment, required this.canRefund});
+
+  final String orderId;
+  final PaymentSummary payment;
+  final bool canRefund;
+
+  @override
+  ConsumerState<_RefundCard> createState() => _RefundCardState();
+}
+
+class _RefundCardState extends ConsumerState<_RefundCard> {
+  final _amountController = TextEditingController();
+  final _reasonController = TextEditingController();
+  bool _submitting = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _amountController.dispose();
+    _reasonController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final payment = widget.payment;
+    final refundedSoFar = payment.refunds
+        .where((r) => r.isProcessed)
+        .fold(Money.zero, (sum, r) => sum + Money.parse(r.amount));
+    final refundable = Money.parse(payment.amount) - refundedSoFar;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Refund — ${_methodLabel(payment.method)} ${Money.parse(payment.amount).format()}',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            if (payment.refunds.isNotEmpty) ...[
+              const Divider(),
+              for (final r in payment.refunds)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${r.isProcessed ? 'Refunded' : r.status == 'PENDING' ? 'Refund pending' : r.status}'
+                          '${r.reason != null && r.reason!.isNotEmpty ? ' — ${r.reason}' : ''}',
+                        ),
+                      ),
+                      Text(Money.parse(r.amount).format()),
+                    ],
+                  ),
+                ),
+              const Divider(),
+            ],
+            if (refundable <= Money.zero)
+              const Text('Fully refunded.')
+            else if (!widget.canRefund)
+              Text('Refundable balance: ${refundable.format()} — ask someone with refund permission to process it.')
+            else ...[
+              Text(
+                'Refundable balance: ${refundable.format()}. Processing a refund — even a partial one — marks '
+                "this order's payment as refunded and, once the order is paid/completed, moves the whole order "
+                "to Refunded. This can't be undone.",
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _amountController,
+                decoration: const InputDecoration(labelText: 'Amount', border: OutlineInputBorder()),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [
+                  TextInputFormatter.withFunction((oldValue, newValue) {
+                    if (newValue.text.isEmpty) return newValue;
+                    return RegExp(r'^\d*\.?\d{0,2}$').hasMatch(newValue.text) ? newValue : oldValue;
+                  }),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _reasonController,
+                decoration: const InputDecoration(labelText: 'Reason (optional)', border: OutlineInputBorder()),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 8),
+                Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+              ],
+              const SizedBox(height: 12),
+              FilledButton(
+                onPressed: _submitting ? null : () => _submit(refundable),
+                child: Text(_submitting ? 'Processing…' : 'Process refund'),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _methodLabel(PaymentMethod method) => switch (method) {
+    PaymentMethod.cash => 'Cash',
+    PaymentMethod.upi => 'UPI',
+    PaymentMethod.card => 'Card',
+    PaymentMethod.other => 'Other',
+  };
+
+  Future<void> _submit(Money refundable) async {
+    final raw = _amountController.text.trim();
+    final parsed = double.tryParse(raw);
+    if (parsed == null || parsed <= 0) {
+      setState(() => _error = 'Enter a valid amount.');
+      return;
+    }
+    final amount = Money.parse(raw);
+    if (amount > refundable) {
+      setState(() => _error = 'Amount exceeds the refundable balance of ${refundable.format()}.');
+      return;
+    }
+
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+
+    try {
+      final repo = ref.read(paymentsRepositoryProvider);
+      final refund = await repo.initiateRefund(
+        widget.payment.id,
+        amount: amount.toPlainString(),
+        reason: _reasonController.text.trim(),
+      );
+      await repo.approveRefund(refund.id);
+      ref.invalidate(orderByIdProvider(widget.orderId));
+      ref.invalidate(activeOrdersProvider);
+      ref.invalidate(paymentsForOrderProvider(widget.orderId));
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _error = e.message);

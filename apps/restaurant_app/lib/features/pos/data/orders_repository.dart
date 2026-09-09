@@ -106,6 +106,28 @@ class OrdersRepository {
     }
   }
 
+  /// `orders.discount`-gated (Owner/Manager only). Only allowed while the order isn't yet
+  /// financially settled (not PAID/COMPLETED/CANCELLED/REFUNDED — BILLED is fine), and only once
+  /// per order — the backend has no "remove/replace discount" endpoint, so a discount is
+  /// permanent once applied (`OrdersService.applyDiscount`'s doc comment on the backend). Returns
+  /// the full, re-fetched order — server-recomputed totals, never trust a client-side calc.
+  Future<Order> applyDiscount(
+    String orderId, {
+    required String type, // 'PERCENTAGE' | 'FIXED'
+    required num value,
+    String? reason,
+  }) async {
+    try {
+      final response = await _apiClient.dio.post<Map<String, dynamic>>(
+        '/orders/$orderId/discount',
+        data: {'type': type, 'value': value, if (reason != null && reason.isNotEmpty) 'reason': reason},
+      );
+      return Order.fromJson(response.data!);
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
   /// READY -> SERVED (backend: `POST /orders/:id/serve`, `orders.update`). The kitchen marking
   /// every item done only gets an order to READY — the kitchen has no way to know when a
   /// waiter has actually carried the food to the table, so this is a deliberate, separate

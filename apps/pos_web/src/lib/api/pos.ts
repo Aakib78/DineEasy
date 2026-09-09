@@ -10,6 +10,9 @@ import type {
   Order,
   Invoice,
   PaymentMethod,
+  PaymentSummary,
+  Refund,
+  DiscountType,
   Printer,
   PrinterType,
   PrinterConnectionType,
@@ -74,6 +77,21 @@ export const ordersApi = {
 
   /** READY -> SERVED — see OrderScreen's doc comment on why this is its own explicit action. */
   serve: (orderId: string) => apiRequest<Order>(`/orders/${orderId}/serve`, { method: 'POST' }),
+
+  /** `orders.discount`-gated (Owner/Manager only). Only allowed while the order isn't yet
+   * financially settled (not PAID/COMPLETED/CANCELLED/REFUNDED — BILLED is fine), and only once
+   * per order — the backend has no "remove/replace discount" endpoint, so a discount is
+   * permanent once applied (see `OrdersService.applyDiscount`'s doc comment). Returns the full,
+   * re-fetched order — server-recomputed totals, never trust a client-side calculation. */
+  discount: (orderId: string, params: { type: DiscountType; value: number; reason?: string }) =>
+    apiRequest<Order>(`/orders/${orderId}/discount`, {
+      method: 'POST',
+      body: {
+        type: params.type,
+        value: params.value,
+        ...(params.reason ? { reason: params.reason } : {}),
+      },
+    }),
 };
 
 export const billingApi = {
@@ -95,6 +113,29 @@ export const billingApi = {
    * the customer. Safe to call as many times as needed; each call queues one more print job. */
   printInvoice: (invoiceId: string) =>
     apiRequest<{ queued: boolean }>(`/invoices/${invoiceId}/print`, { method: 'POST' }),
+};
+
+/** `payments.refund`-gated (Owner/Manager only — same permission covers both steps below, so
+ * there's no separate "approver" role to design a handoff for in v1). A refund is two backend
+ * calls: `initiateRefund` creates a `PENDING` `Refund` row, `approveRefund` immediately (same
+ * user, same permission) moves it to `PROCESSED` and applies it — see
+ * `PaymentsService.approveRefund`'s doc comment. There's no "reject" endpoint. **Important**:
+ * approving any refund — even a small partial one — on a payment belonging to a PAID/COMPLETED
+ * order flips the *whole order's* status to REFUNDED (one-way, no way back); the UI must warn
+ * about this before submitting, not just for full refunds. */
+export const paymentsApi = {
+  /** `GET /orders/:orderId/payments` — the only endpoint that returns each payment's `refunds`
+   * array; `order.payments` embedded on `GET /orders/:id` does not include it. */
+  list: (orderId: string) => apiRequest<PaymentSummary[]>(`/orders/${orderId}/payments`),
+
+  initiateRefund: (paymentId: string, params: { amount: string; reason?: string }) =>
+    apiRequest<Refund>(`/payments/${paymentId}/refund`, {
+      method: 'POST',
+      body: { amount: Number(params.amount), ...(params.reason ? { reason: params.reason } : {}) },
+    }),
+
+  approveRefund: (refundId: string) =>
+    apiRequest<Refund>(`/payments/refunds/${refundId}/approve`, { method: 'POST' }),
 };
 
 /** `printers.manage`-gated (Owner/Manager only — see `PrintersController`) — registering a

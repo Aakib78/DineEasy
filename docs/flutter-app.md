@@ -258,6 +258,24 @@ Kitchen/KDS, Billing, Reports) builds on top of, not those features themselves:
   is unchanged — it already lists every destination as a sidebar, not a bottom nav, so there was
   nothing to move there. Not yet verified in this environment — no Flutter/Dart SDK here.
 
+- **Discount and refund cards** (`billing_detail_screen.dart`'s `_DiscountCard`/`_RefundCard`,
+  new `features/billing/data/payments_repository.dart` + `state/payments_providers.dart`):
+  `orders.discount`/`payments.refund` had backend endpoints with no UI anywhere until now — direct
+  port of `apps/pos_web`'s equivalent cards, same behavior. `_DiscountCard` shows the order's (at
+  most one, in v1) applied discount read-only, or an apply form (percentage/fixed, optional
+  reason) when there isn't one yet and the order isn't financially settled — the backend has no
+  remove/replace endpoint, so once applied it's permanent. `_RefundCard` renders once per payment
+  that's `SUCCEEDED`/`PARTIALLY_REFUNDED` or already has refund history, computes the refundable
+  balance client-side (`amount - sum(PROCESSED refunds)` — the backend doesn't reject an
+  over-amount refund itself), and calls `initiateRefund` then `approveRefund` back-to-back as one
+  action (v1 requires the same permission for both, no separate approver role). It warns before
+  submitting that even a small partial refund flips a PAID/COMPLETED order's whole status to
+  REFUNDED — see `docs/payments.md`'s Refunds section. `PaymentSummary`/`Order` in
+  `pos_models.dart` gained `refunds`/`discounts` fields to carry data the backend already
+  returned but this app never parsed; refund data specifically only comes from the new
+  `PaymentsRepository.listForOrder` (`GET /orders/:orderId/payments`), not the `payments` embedded
+  on `GET /orders/:id`. Not yet verified in this environment — no Flutter/Dart SDK here.
+
 **Not built yet**: offline/local-cache behavior (tracked with the LAN/offline backend slice —
 docs/offline-mode.md), real OS-level push/local notifications (the in-app inbox above is the
 step before that — it's a poll-driven bell, not a system notification), and the
