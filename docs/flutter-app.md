@@ -276,6 +276,21 @@ Kitchen/KDS, Billing, Reports) builds on top of, not those features themselves:
   `PaymentsRepository.listForOrder` (`GET /orders/:orderId/payments`), not the `payments` embedded
   on `GET /orders/:id`. Not yet verified in this environment — no Flutter/Dart SDK here.
 
+- **Printer job history/health** (`lib/features/printers/printer_jobs_screen.dart`, new
+  `PrintersRepository.listJobs`/`printerJobsProvider`): `GET /printers/:id/jobs` existed with no
+  UI consumer since the Printers screen shipped — tapping a printer row in `PrintersScreen` (now
+  `onTap` instead of inert) opens this screen: last 50 jobs newest-first (no pagination on the
+  endpoint), a Queued/Failed count card, and per-job status/attempts/`lastError`, all computed
+  client-side over that fixed window. Direct port of `apps/pos_web`'s equivalent screen, same
+  behavior including the "stuck `QUEUED` for 60+ seconds" agent-down warning (a `PrinterJob` only
+  ever becomes terminally `FAILED` after 3 retried attempts — an agent that's down or can't reach
+  the API never produces a `FAILED` row at all, just a silently growing backlog). New `PrinterJob`
+  model in `printers_models.dart`, including `payload: Map<String, dynamic>` (read defensively —
+  `orderNumber`/`kotNumber`/`invoiceNumber` in practice, per the backend's enqueue call sites, but
+  not guaranteed) since a print job has no order/invoice FK of its own. No backend changes needed.
+  See `docs/printing.md`'s "Operator visibility" section. Not yet verified in this environment —
+  no Flutter/Dart SDK here.
+
 **Not built yet**: offline/local-cache behavior (tracked with the LAN/offline backend slice —
 docs/offline-mode.md), real OS-level push/local notifications (the in-app inbox above is the
 step before that — it's a poll-driven bell, not a system notification), and the

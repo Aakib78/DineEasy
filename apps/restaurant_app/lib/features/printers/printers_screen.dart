@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_exception.dart';
 import 'data/printers_models.dart';
+import 'printer_jobs_screen.dart';
 import 'state/printers_providers.dart';
 
 /// The Flutter port of `apps/pos_web/src/features/printers/PrintersScreen.tsx` — see that
@@ -95,7 +96,21 @@ class _PrinterTile extends StatelessWidget {
         ),
         title: Text(printer.name),
         subtitle: Text('$typeLabel${printer.isActive ? '' : ' · inactive'}'),
-        trailing: Text(connectionLabel, style: Theme.of(context).textTheme.bodySmall),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(connectionLabel, style: Theme.of(context).textTheme.bodySmall),
+            const SizedBox(width: 4),
+            const Icon(Icons.chevron_right),
+          ],
+        ),
+        // Job history/health — the read side of `GET /printers/:id/jobs`, previously reachable
+        // only by a raw API call (see docs/printing.md's "Operator visibility" section).
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => PrinterJobsScreen(printerId: printer.id, printerName: printer.name),
+          ),
+        ),
       ),
     );
   }

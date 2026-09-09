@@ -16,6 +16,7 @@ import type {
   Printer,
   PrinterType,
   PrinterConnectionType,
+  PrinterJob,
 } from '@dineeasy/shared-types';
 import type { PosCartLine } from '../cart/pos-cart-types';
 
@@ -161,4 +162,9 @@ export const printersApi = {
         ...(params.port ? { port: params.port } : {}),
       },
     }),
+
+  /** Last 50 jobs for one printer, newest first — no pagination/status filter on this endpoint
+   * (`PrintersService.listJobs`). Backs the printer health/job-history view; see `PrinterJob`'s
+   * doc comment in `@dineeasy/shared-types` for what's (not) reliably in `payload`. */
+  jobs: (printerId: string) => apiRequest<PrinterJob[]>(`/printers/${printerId}/jobs`),
 };

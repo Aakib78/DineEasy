@@ -11,3 +11,12 @@ final printersRepositoryProvider = Provider<PrintersRepository>(
 final printersListProvider = FutureProvider.autoDispose<List<Printer>>((ref) {
   return ref.watch(printersRepositoryProvider).listPrinters();
 });
+
+/// Job history for one printer — see `PrintersRepository.listJobs`'s doc comment. Backs
+/// `PrinterJobsScreen`, reached by tapping a printer row in `PrintersScreen`.
+final printerJobsProvider = FutureProvider.autoDispose.family<List<PrinterJob>, String>((
+  ref,
+  printerId,
+) {
+  return ref.watch(printersRepositoryProvider).listJobs(printerId);
+});

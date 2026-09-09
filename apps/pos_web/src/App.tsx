@@ -8,6 +8,7 @@ import { OrderScreen } from './features/order/OrderScreen';
 import { BillingScreen } from './features/billing/BillingScreen';
 import { BillingDetailScreen } from './features/billing/BillingDetailScreen';
 import { PrintersScreen } from './features/printers/PrintersScreen';
+import { PrinterJobsScreen } from './features/printers/PrinterJobsScreen';
 
 function AppShell({ children }: { children: ReactNode }) {
   return (
@@ -59,6 +60,14 @@ export function App() {
         element={
           <AppShell>
             <PrintersScreen />
+          </AppShell>
+        }
+      />
+      <Route
+        path="/printers/:printerId/jobs"
+        element={
+          <AppShell>
+            <PrinterJobsScreen />
           </AppShell>
         }
       />
