@@ -7,10 +7,10 @@
 
 services:
   postgres:
-    ports:
-      - "5432:5432"
     environment:
-      POSTGRES_PASSWORD: dineeasy_dev_only
+      POSTGRES_DB: ${POSTGRES_DB:-dineeasy}
+      POSTGRES_USER: ${POSTGRES_USER:-dineeasy}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
 
   redis:
     ports:
@@ -29,17 +29,12 @@ services:
   web:
     build:
       target: development
-    # Mounted at the monorepo root (/repo, matching the Dockerfile's build context — not
-    # /app, which was apps/customer_web-only before this depended on packages/shared_types)
-    # so live-editing shared_types also hot-reloads here. The two anonymous volumes protect
-    # the image's own Linux-built node_modules from being clobbered by the host's (macOS/
-    # other-platform) node_modules that the root bind mount would otherwise shadow.
+    # Mounted at the monorepo root (/repo, matching the Dockerfile's build context)
+    # so live-editing shared_types also hot-reloads here.
     volumes:
       - ../..:/repo
       - /repo/node_modules
       - /repo/apps/customer_web/node_modules
-    # Vite's dev server (unlike the production build) reads VITE_-prefixed process env vars
-    # directly at startup, so this works here without a build arg — see apps/customer_web/Dockerfile.
     environment:
       VITE_API_BASE_URL: http://localhost:${API_PORT:-3000}/api/v1
     command: ["npm", "run", "dev", "--", "--host"]
