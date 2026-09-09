@@ -4,10 +4,10 @@ import {
   IsArray,
   IsBoolean,
   IsInt,
+  IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
-  IsUUID,
   Min,
   MinLength,
   ValidateNested,
@@ -28,7 +28,13 @@ class VariantInput {
 }
 
 export class CreateMenuItemDto {
-  @IsUUID()
+  // Not @IsUUID(): MenuCategory.id/TaxGroup.id/ModifierGroup.id are plain `String @id
+  // @default(uuid())` columns, and seeded demo data (prisma/seed.ts) deliberately overrides
+  // that default with human-readable ids (e.g. "demo-cat-starters") for stable, idempotent
+  // upserts across reseeds — see the identical reasoning on CreateOrderDto's menuItemId in
+  // orders/dto/create-order.dto.ts, caught the same way (a real request against seeded data).
+  @IsString()
+  @IsNotEmpty()
   categoryId!: string;
 
   @IsString()
@@ -43,7 +49,7 @@ export class CreateMenuItemDto {
   @Min(0)
   basePrice!: number;
 
-  @IsOptional() @IsUUID() taxGroupId?: string;
+  @IsOptional() @IsString() @IsNotEmpty() taxGroupId?: string;
   @IsOptional() @IsBoolean() isVegetarian?: boolean;
   @IsOptional() @IsInt() @Min(0) displayOrder?: number;
 
@@ -58,6 +64,7 @@ export class CreateMenuItemDto {
   @IsOptional()
   @IsArray()
   @ArrayUnique()
-  @IsUUID('4', { each: true })
+  @IsString({ each: true })
+  @IsNotEmpty({ each: true })
   modifierGroupIds?: string[];
 }

@@ -4,6 +4,7 @@ import {
   IsArray,
   IsIn,
   IsInt,
+  IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
@@ -12,7 +13,16 @@ import {
 } from 'class-validator';
 
 class OrderItemModifierInput {
-  @IsUUID()
+  // Not @IsUUID(): Modifier.id is `String @id @default(uuid())` in schema.prisma -- a plain
+  // string column, with @default(uuid()) only being the value used when none is supplied.
+  // Seeded demo data (prisma/seed.ts) deliberately overrides it with a human-readable id
+  // (e.g. "demo-mg-spice-mild") for stable, idempotent upserts across reseeds -- @IsUUID()
+  // here rejected every seeded modifier outright, caught the first time a real order was
+  // actually placed against seeded data (see docs/troubleshooting.md). The real
+  // existence/ownership check happens via the Prisma lookup in OrdersService regardless of
+  // the id's format, so validating format here was never buying any actual safety.
+  @IsString()
+  @IsNotEmpty()
   modifierId!: string;
 
   @IsOptional()
@@ -22,11 +32,15 @@ class OrderItemModifierInput {
 }
 
 export class CreateOrderItemDto {
-  @IsUUID()
+  // See OrderItemModifierInput.modifierId's comment above -- same reasoning, same seed-data
+  // shape (MenuItem.id is seeded as e.g. "demo-item-paneer-tikka").
+  @IsString()
+  @IsNotEmpty()
   menuItemId!: string;
 
   @IsOptional()
-  @IsUUID()
+  @IsString()
+  @IsNotEmpty()
   menuItemVariantId?: string;
 
   @IsInt()
