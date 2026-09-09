@@ -244,6 +244,20 @@ Kitchen/KDS, Billing, Reports) builds on top of, not those features themselves:
   environment — no Flutter/Dart SDK here, same limitation as every other Flutter-side change in
   this doc.
 
+- **Bottom nav trimmed to POS/Kitchen/Billing; Tables/Reports/Staff/Settings moved to the
+  drawer** (`home_shell.dart`): direct user request — the phone-layout bottom nav had grown to 7
+  tabs (every destination, unfiltered by how often each is actually tapped mid-shift) and felt
+  cluttered. `_Destination` gained an `inBottomNav` flag: `true` for the three destinations staff
+  hit constantly while working a shift (POS, Kitchen, Billing), `false` for the more occasional
+  lookup/admin ones (Tables, Reports, Staff, Settings), which now live in the drawer opened from
+  the AppBar's menu icon instead. Selection state is split accordingly — `_selectedPrimaryIndex`
+  (which bottom-nav tab) and `_secondaryOverride` (which drawer destination, if any, is currently
+  showing instead) are tracked separately, so opening a drawer item doesn't disturb which primary
+  tab the bottom nav highlights underneath it once you go back, the same way a drawer item
+  doesn't "steal" the tab bar's selection in most apps. The wide/tablet `NavigationRail` layout
+  is unchanged — it already lists every destination as a sidebar, not a bottom nav, so there was
+  nothing to move there. Not yet verified in this environment — no Flutter/Dart SDK here.
+
 **Not built yet**: offline/local-cache behavior (tracked with the LAN/offline backend slice —
 docs/offline-mode.md), real OS-level push/local notifications (the in-app inbox above is the
 step before that — it's a poll-driven bell, not a system notification), and the

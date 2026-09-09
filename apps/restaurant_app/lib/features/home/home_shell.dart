@@ -24,6 +24,7 @@ class _Destination {
     required this.icon,
     required this.requiredPermission,
     required this.screen,
+    required this.inBottomNav,
   });
 
   final String label;
@@ -36,6 +37,16 @@ class _Destination {
   final String? requiredPermission;
 
   final Widget screen;
+
+  /// True for the handful of destinations staff tap between constantly during a shift (POS,
+  /// Kitchen, Billing) — these are what actually occupy the bottom nav bar / rail as
+  /// always-visible tabs. The rest (Tables, Reports, Staff, Settings) are lower-frequency
+  /// lookup/admin destinations that don't need to permanently claim bottom-nav space on a phone
+  /// screen — they live in the drawer instead, opened from the AppBar's menu icon (see
+  /// `_HomeShellState.build`'s narrow-layout branch). On a wide/tablet layout the
+  /// `NavigationRail` still lists every destination together, primary and secondary alike,
+  /// since a rail is already a sidebar rather than a bottom nav — nothing to move there.
+  final bool inBottomNav;
 }
 
 final _destinations = <_Destination>[
@@ -44,42 +55,49 @@ final _destinations = <_Destination>[
     icon: Icons.point_of_sale,
     requiredPermission: Permissions.ordersCreate,
     screen: PosHomeScreen(),
-  ),
-  const _Destination(
-    label: 'Tables',
-    icon: Icons.table_restaurant,
-    requiredPermission: Permissions.tablesView,
-    screen: TablesManagementScreen(),
+    inBottomNav: true,
   ),
   const _Destination(
     label: 'Kitchen',
     icon: Icons.soup_kitchen,
     requiredPermission: Permissions.kitchenView,
     screen: KdsScreen(),
+    inBottomNav: true,
   ),
   const _Destination(
     label: 'Billing',
     icon: Icons.receipt_long,
     requiredPermission: Permissions.billingView,
     screen: BillingScreen(),
+    inBottomNav: true,
+  ),
+  const _Destination(
+    label: 'Tables',
+    icon: Icons.table_restaurant,
+    requiredPermission: Permissions.tablesView,
+    screen: TablesManagementScreen(),
+    inBottomNav: false,
   ),
   const _Destination(
     label: 'Reports',
     icon: Icons.bar_chart,
     requiredPermission: Permissions.reportsView,
     screen: ReportsScreen(),
+    inBottomNav: false,
   ),
   const _Destination(
     label: 'Staff',
     icon: Icons.people,
     requiredPermission: Permissions.staffView,
     screen: StaffScreen(),
+    inBottomNav: false,
   ),
   const _Destination(
     label: 'Settings',
     icon: Icons.settings,
     requiredPermission: null,
     screen: SettingsScreen(),
+    inBottomNav: false,
   ),
 ];
 
@@ -87,7 +105,10 @@ final _destinations = <_Destination>[
 /// feature screens exist so far. Every destination above now has a real screen — Settings was
 /// the last placeholder (see docs/architecture.md §15) until its Printers entry landed; this
 /// shell itself needed no change for that beyond swapping `screen:` for the real widget, which
-/// is the whole point of keeping `_destinations` as plain data.
+/// is the whole point of keeping `_destinations` as plain data. On a narrow/phone layout, only
+/// `inBottomNav` destinations (POS, Kitchen, Billing) occupy the bottom nav bar — the rest move
+/// to the drawer, opened from the AppBar's menu icon — see `_Destination.inBottomNav`'s doc
+/// comment for why.
 class HomeShell extends ConsumerStatefulWidget {
   const HomeShell({super.key});
 
@@ -96,7 +117,21 @@ class HomeShell extends ConsumerStatefulWidget {
 }
 
 class _HomeShellState extends ConsumerState<HomeShell> {
-  int _selectedIndex = 0;
+  /// Index into `primaryVisible` (POS/Kitchen/Billing, filtered by permission) — only changes
+  /// when a bottom-nav / rail primary tab is tapped, never by viewing a drawer destination. See
+  /// `_secondaryOverride`'s doc comment for why these are tracked separately.
+  int _selectedPrimaryIndex = 0;
+
+  /// Non-null while a drawer (or, on a wide layout, rail) destination outside the primary three
+  /// — Tables, Reports, Staff, Settings — is what's showing. Kept separate from
+  /// `_selectedPrimaryIndex` so that opening one of these doesn't disturb which primary tab the
+  /// bottom nav highlights underneath it, the same way opening a drawer item in most apps
+  /// doesn't "steal" the tab bar's selection. Cleared the moment a primary tab is tapped again.
+  /// Holds a reference into the static `_destinations` list (stable `const` instances), so
+  /// straightforward identity equality is enough to compare/validate it — no id/label lookup
+  /// needed.
+  _Destination? _secondaryOverride;
+
   Timer? _notificationPollTimer;
   StreamSubscription<void>? _notificationRealtimeSub;
 
@@ -143,6 +178,17 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     super.dispose();
   }
 
+  void _selectPrimary(int index) {
+    setState(() {
+      _selectedPrimaryIndex = index;
+      _secondaryOverride = null;
+    });
+  }
+
+  void _selectSecondary(_Destination destination) {
+    setState(() => _secondaryOverride = destination);
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(currentUserProvider);
@@ -160,26 +206,51 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       return _NoOutletAssignedScreen(user: user);
     }
 
-    // int.clamp returns num, not int — .toInt() keeps selectedIndex usable as a List index and
-    // as NavigationRail/NavigationBar's selectedIndex (both require int).
-    final selectedIndex = _selectedIndex.clamp(0, visible.length - 1).toInt();
+    final primaryVisible = visible.where((d) => d.inBottomNav).toList();
+    final secondaryVisible = visible.where((d) => !d.inBottomNav).toList();
+
+    // int.clamp returns num, not int — .toInt() keeps this usable as a List index and as
+    // NavigationRail/NavigationBar's selectedIndex (both require int).
+    final selectedPrimaryIndex = primaryVisible.isEmpty
+        ? 0
+        : _selectedPrimaryIndex.clamp(0, primaryVisible.length - 1).toInt();
+
+    // Only honor a pending override if it's still actually visible — a stale reference here
+    // (the current user's role/permissions changed mid-session, however unlikely) must never be
+    // trusted over what they can currently see.
+    final override =
+        _secondaryOverride != null && visible.contains(_secondaryOverride) ? _secondaryOverride : null;
+
+    final current = override ??
+        (primaryVisible.isNotEmpty
+            ? primaryVisible[selectedPrimaryIndex]
+            : (secondaryVisible.isNotEmpty ? secondaryVisible.first : null));
+
     final isWide = MediaQuery.sizeOf(context).width >= 800;
 
-    final body = visible.isEmpty
+    final body = current == null
         ? const Center(child: Text('No screens available for your role yet.'))
-        : visible[selectedIndex].screen;
+        : current.screen;
 
     if (isWide) {
+      final railIndex = current == null ? 0 : visible.indexOf(current);
       return Scaffold(
         appBar: AppBar(
-          title: Text(visible.isEmpty ? 'DineEasy' : visible[selectedIndex].label),
+          title: Text(current?.label ?? 'DineEasy'),
           actions: const [_NotificationBellButton()],
         ),
         body: Row(
           children: [
             NavigationRail(
-              selectedIndex: visible.isEmpty ? 0 : selectedIndex,
-              onDestinationSelected: (i) => setState(() => _selectedIndex = i),
+              selectedIndex: visible.isEmpty ? 0 : railIndex,
+              onDestinationSelected: (i) {
+                final destination = visible[i];
+                if (destination.inBottomNav) {
+                  _selectPrimary(primaryVisible.indexOf(destination));
+                } else {
+                  _selectSecondary(destination);
+                }
+              },
               labelType: NavigationRailLabelType.all,
               leading: _UserBadge(user: user),
               destinations: [
@@ -196,18 +267,42 @@ class _HomeShellState extends ConsumerState<HomeShell> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(visible.isEmpty ? 'DineEasy' : visible[selectedIndex].label),
+        title: Text(current?.label ?? 'DineEasy'),
         actions: const [_NotificationBellButton()],
       ),
-      drawer: Drawer(child: _UserBadge(user: user, expanded: true)),
+      // Tables/Reports/Staff/Settings live here rather than in the bottom nav — see
+      // `_Destination.inBottomNav`'s doc comment. `Scaffold` shows the AppBar's menu icon
+      // automatically whenever `drawer` is set, so there's nothing else to wire up to open it.
+      drawer: Drawer(
+        child: SafeArea(
+          child: ListView(
+            children: [
+              _UserBadge(user: user, expanded: true),
+              if (secondaryVisible.isNotEmpty) ...[
+                const Divider(height: 1),
+                for (final d in secondaryVisible)
+                  ListTile(
+                    leading: Icon(d.icon),
+                    title: Text(d.label),
+                    selected: identical(current, d),
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      _selectSecondary(d);
+                    },
+                  ),
+              ],
+            ],
+          ),
+        ),
+      ),
       body: body,
-      bottomNavigationBar: visible.isEmpty
+      bottomNavigationBar: primaryVisible.isEmpty
           ? null
           : NavigationBar(
-              selectedIndex: selectedIndex,
-              onDestinationSelected: (i) => setState(() => _selectedIndex = i),
+              selectedIndex: selectedPrimaryIndex,
+              onDestinationSelected: _selectPrimary,
               destinations: [
-                for (final d in visible)
+                for (final d in primaryVisible)
                   NavigationDestination(icon: Icon(d.icon), label: d.label),
               ],
             ),
