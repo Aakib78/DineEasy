@@ -15,11 +15,11 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate deploy",
-    "prisma:migrate:dev": "prisma migrate dev",
-    "prisma:studio": "prisma studio",
-    "seed": "ts-node prisma/seed.ts"
+    "prisma:generate": "dotenv -e ../../.env -- prisma generate",
+    "prisma:migrate": "dotenv -e ../../.env -- prisma migrate deploy",
+    "prisma:migrate:dev": "dotenv -e ../../.env -- prisma migrate dev",
+    "prisma:studio": "dotenv -e ../../.env -- prisma studio",
+    "seed": "dotenv -e ../../.env -- ts-node prisma/seed.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.4",
@@ -61,6 +61,7 @@
     "@types/supertest": "^6.0.2",
     "@typescript-eslint/eslint-plugin": "^7.18.0",
     "@typescript-eslint/parser": "^7.18.0",
+    "dotenv-cli": "^7.4.4",
     "eslint": "^8.57.1",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-prettier": "^5.2.1",

@@ -115,12 +115,23 @@ async function main() {
       create: { organizationId: organization.id, name: s.name, email: s.email, passwordHash },
     });
 
+    // Not `upsert` on the `userId_roleId_outletId` compound key: Prisma's generated
+    // `WhereUniqueInput` for a compound key including a nullable column (`outletId String?`
+    // here — see `UserRole` in schema.prisma) doesn't accept `null` in that position at all,
+    // because SQL's `NULL <> NULL` means a plain equality lookup can't reliably mean "the row
+    // where this column IS NULL" the way `upsert`/`findUnique` need. `UsersService.
+    // removeRoleAssignment` hits the exact same nullable-outletId shape and works around it
+    // the same way: a plain (non-compound-key) `where` filter, which has no such restriction —
+    // here that means a manual find-or-create instead of `upsert`.
     const outletId = s.outletScoped ? outlet.id : null;
-    await prisma.userRole.upsert({
-      where: { userId_roleId_outletId: { userId: user.id, roleId: roleIdByName[s.role], outletId } },
-      update: {},
-      create: { userId: user.id, roleId: roleIdByName[s.role], outletId },
+    const existingUserRole = await prisma.userRole.findFirst({
+      where: { userId: user.id, roleId: roleIdByName[s.role], outletId },
     });
+    if (!existingUserRole) {
+      await prisma.userRole.create({
+        data: { userId: user.id, roleId: roleIdByName[s.role], outletId },
+      });
+    }
   }
   console.log(`Seeded ${staff.length} staff accounts (password for all: ${DEMO_PASSWORD})`);
 

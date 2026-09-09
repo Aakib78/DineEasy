@@ -38,7 +38,21 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true, load: [configuration], validate: validateEnv }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      load: [configuration],
+      validate: validateEnv,
+      // `services/api` has no .env of its own by convention — the monorepo root's single
+      // `.env` (see root README.md's quick start) is the one source of truth, shared with
+      // docker-compose. But `npm run start:dev --workspace services/api` (and any other
+      // `--workspace`-scoped script) runs with `services/api` as the process cwd, and
+      // @nestjs/config's default `envFilePath` resolves relative to `process.cwd()` — so
+      // without this, it silently never finds the root `.env` at all (it doesn't error;
+      // env vars are just left unset, which then fails later and confusingly at whatever
+      // first reads them). Checking the local path first lets a workspace-local `.env`
+      // override the root one if someone ever wants that, without requiring it.
+      envFilePath: ['.env', '../../.env'],
+    }),
     LoggerModule.forRoot({
       pinoHttp: {
         level: process.env.LOG_LEVEL ?? 'info',
