@@ -229,13 +229,27 @@ Kitchen/KDS, Billing, Reports) builds on top of, not those features themselves:
 
 - **Realtime WebSocket wiring** (`lib/core/realtime/`): closes the "no WebSocket wiring on the Flutter side yet" gap flagged throughout this doc and in `docs/architecture.md` §15/§8 — the customer PWA has had a live nudge (`useOrderUpdates.ts`) since it was built; the staff app had none, leaning entirely on `Timer.periodic` polling (KDS, 6s) or nothing at all (POS home, Billing — only refreshed on the screen's own actions or a manual pull-to-refresh). `RealtimeService` (`lib/core/realtime/realtime_service.dart`) is a thin `socket_io_client` wrapper around `RealtimeGateway`'s existing `/realtime` namespace, authenticating with the same staff access token already used for REST calls; one instance is shared for the whole session (`realtimeServiceProvider`), connected/disconnected from `HomeShell`'s `initState`/`dispose` (the shell that's only ever mounted while authenticated), and each feature screen just subscribes to whichever event stream(s) it cares about in its own `initState`. Wired in: `PosHomeScreen` (`order.updated`/`table.updated` — this is what now makes "Order open" clear live once an order is paid off, instead of only after a manual pull-to-refresh; see `docs/troubleshooting.md`'s "table.status and Order open are independent signals" entry for the mechanic this keeps current), `BillingScreen` (`order.updated` — converted from `ConsumerWidget` to `ConsumerStatefulWidget` for this), and `KdsScreen` (`kitchen.queue_updated`/`order.updated`, layered on top of its existing 6s poll rather than replacing it). Deliberately additive everywhere, never a replacement for the existing polling — see `RealtimeService`'s own doc comment for why (a missed/out-of-order event, a proxy blocking WebSocket upgrades, a captive portal — the polling is what keeps each screen eventually correct regardless). Backend-side, `PaymentsService.recordPayment` now also emits `order.updated` for every recorded payment, not only ones that fully settle the order — previously only `transitionStatus`'s own emit covered the "fully settled" case, so a partial/split payment update would sit invisible on other screens until the order was eventually fully paid. `apps/customer_web/src/lib/realtime/useOrderUpdates.ts` was the template for all of this. Not yet verified in this environment — no Flutter/Dart SDK here, same limitation as every other Flutter-side change in this doc — pending confirmation from a real run (needs `flutter pub get` to pull in the newly-added `socket_io_client` dependency).
 
+- **Settings screen + Printers** (`lib/features/settings/settings_screen.dart`,
+  `lib/features/printers/`): closes the last placeholder destination in the nav shell — see
+  `docs/architecture.md` §15, which corrected an earlier assumption that Settings had "no
+  dedicated requirements beyond sign-out": printer setup is a real, recurring operational need
+  that, until now, only existed in `apps/pos_web`. `SettingsScreen` is a small hub (account
+  info, sign-out, and a Printers entry) rather than the Printers screen itself, since Settings
+  is reachable by every signed-in staff member (`requiredPermission: null` in
+  `home_shell.dart`) while printer management is `printers.manage`-gated — the entry is hidden
+  (not just disabled) for anyone without it, same convention as the rest of this app.
+  `PrintersScreen`/`PrintersRepository`/printer models are a direct port of
+  `apps/pos_web/src/features/printers/PrintersScreen.tsx`, same fields (name, KITCHEN/RECEIPT,
+  NETWORK/USB, IP/port), same backend (`POST`/`GET /printers`). Not yet verified in this
+  environment — no Flutter/Dart SDK here, same limitation as every other Flutter-side change in
+  this doc.
+
 **Not built yet**: offline/local-cache behavior (tracked with the LAN/offline backend slice —
 docs/offline-mode.md), real OS-level push/local notifications (the in-app inbox above is the
 step before that — it's a poll-driven bell, not a system notification), and the
 Windows/Android platform scaffolding itself (see below). Every permission-gated feature-area
-destination in the nav shell (POS, Tables, Kitchen, Billing, Reports, Staff) now has a real
-screen — only Settings remains a placeholder, and it's expected to stay minimal (spec has no
-dedicated settings-screen requirements beyond sign-out, already in the nav shell itself).
+destination in the nav shell (POS, Tables, Kitchen, Billing, Reports, Staff) — and now Settings,
+via its Printers entry — has a real screen; there are no placeholder destinations left.
 
 ## Why there's no `android/`, `ios/`, or `windows/` folder here
 
