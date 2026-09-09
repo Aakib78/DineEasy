@@ -54,8 +54,12 @@ re-queues a `FAILED` job up to 3 attempts; this agent reports once per attempt a
 
 ## Setting it up
 
-1. **Create a printer in DineEasy** (Settings → Printers, or `POST /printers`) with
-   `connectionType: NETWORK` and the printer's LAN `ipAddress`/`port` (usually `9100`).
+1. **Create a printer in DineEasy** — `apps/pos_web`'s Printers screen (nav tab visible to an
+   Owner/Manager login, at `/printers`), or `POST /printers` directly — with
+   `connectionType: NETWORK` and the printer's LAN `ipAddress`/`port` (usually `9100`). Give the
+   printer a static IP first (most ESC/POS printers print their current IP from a self-test
+   button combo, or ship a config utility like Epson's EpsonNet Config/TM-Utility) — a DHCP
+   lease that changes later silently breaks printing until this row is updated to match.
 2. **Create a staff account for the agent** — a normal user via the Staff screen, given a role
    that holds only `printers.manage`, scoped to the one outlet it should serve (an org-wide/
    multi-outlet account has no single "active outlet" for the agent to act on — see

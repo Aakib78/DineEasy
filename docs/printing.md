@@ -46,4 +46,6 @@ the authoritative "done vs. planned" list.
 
 ## Operator visibility
 
-Settings → Printers shows each printer's last successful job, current queue depth, and recent failures — this is the "printer status" the system health screen surfaces (spec §59/§60).
+**Implemented**: `apps/pos_web/src/features/printers/PrintersScreen.tsx` (`printers.manage`-gated, so Owner/Manager only — nav tab hidden for everyone else, same pattern as every other permission-gated destination) lists an outlet's printers and lets you register a new one (name, `KITCHEN`/`RECEIPT`, `NETWORK`/`USB`, IP/port for network) — this is what closes the loop `services/print-agent/README.md` always assumed existed ("create a printer via Settings → Printers, or `POST /printers`") but that no app actually had until this screen. The Flutter app has no equivalent yet — its own Settings destination is still a placeholder (`home_shell.dart`).
+
+**Still planned, not built**: per-printer job history, current queue depth, and recent-failure surfacing — the "printer status" the system health screen is meant to show (spec §59/§60). Today, confirming a `PrinterJob` actually sent or failed means querying it directly (`GET /printers/:id/jobs`) or watching `services/print-agent`'s own logs; there's no UI for it yet.

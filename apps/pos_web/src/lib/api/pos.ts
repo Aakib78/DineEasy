@@ -10,6 +10,9 @@ import type {
   Order,
   Invoice,
   PaymentMethod,
+  Printer,
+  PrinterType,
+  PrinterConnectionType,
 } from '@dineeasy/shared-types';
 import type { PosCartLine } from '../cart/pos-cart-types';
 
@@ -86,4 +89,29 @@ export const billingApi = {
    * the customer. Safe to call as many times as needed; each call queues one more print job. */
   printInvoice: (invoiceId: string) =>
     apiRequest<{ queued: boolean }>(`/invoices/${invoiceId}/print`, { method: 'POST' }),
+};
+
+/** `printers.manage`-gated (Owner/Manager only — see `PrintersController`) — registering a
+ * printer here is what makes `services/print-agent` able to see and drain jobs for it. This
+ * app never talks to a physical printer itself; see `docs/printing.md`. */
+export const printersApi = {
+  list: () => apiRequest<Printer[]>('/printers'),
+
+  create: (params: {
+    name: string;
+    type: PrinterType;
+    connectionType: PrinterConnectionType;
+    ipAddress?: string;
+    port?: number;
+  }) =>
+    apiRequest<Printer>('/printers', {
+      method: 'POST',
+      body: {
+        name: params.name,
+        type: params.type,
+        connectionType: params.connectionType,
+        ...(params.ipAddress ? { ipAddress: params.ipAddress } : {}),
+        ...(params.port ? { port: params.port } : {}),
+      },
+    }),
 };
