@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { TaxService } from './tax.service';
 import { CreateTaxGroupDto } from './dto/create-tax-group.dto';
 import { UpdateTaxGroupDto } from './dto/update-tax-group.dto';
@@ -18,9 +18,11 @@ export class TaxController {
     return this.taxService.create(user.organizationId, requireActiveOutlet(user), dto, user.userId);
   }
 
+  // `includeInactive` defaults off — see the identical comment on ModifiersController.list for
+  // why this is opt-in rather than a behavior change for the pre-existing caller.
   @Get()
-  list(@CurrentUser() user: AuthenticatedUser) {
-    return this.taxService.listForOutlet(requireActiveOutlet(user));
+  list(@CurrentUser() user: AuthenticatedUser, @Query('includeInactive') includeInactive?: string) {
+    return this.taxService.listForOutlet(requireActiveOutlet(user), includeInactive === 'true');
   }
 
   @Get(':id')

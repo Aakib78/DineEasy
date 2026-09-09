@@ -215,6 +215,7 @@ class _ModifierGroupDetailScreenState extends ConsumerState<ModifierGroupDetailS
           );
       ref.invalidate(_groupDetailProvider(widget.groupId));
       ref.invalidate(modifierGroupsListProvider);
+      ref.invalidate(modifierGroupsAdminProvider);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved')));
     } catch (e) {
@@ -343,6 +344,7 @@ class _ModifierSheetState extends ConsumerState<_ModifierSheet> {
       }
       ref.invalidate(_groupDetailProvider(widget.groupId));
       ref.invalidate(modifierGroupsListProvider);
+      ref.invalidate(modifierGroupsAdminProvider);
       if (!mounted) return;
       Navigator.pop(context);
     } catch (e) {

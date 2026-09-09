@@ -20,9 +20,16 @@ class ModifierGroupsRepository {
 
   final ApiClient _apiClient;
 
-  Future<List<ModifierGroupAdmin>> list() async {
+  /// `includeInactive` defaults off, matching the backend's own default. Pass `true` from the
+  /// standalone management screen (which needs to show — and let staff reactivate — a
+  /// deactivated group); leave it `false` for a picker that's choosing which groups to newly
+  /// attach to a menu item, where an inactive one shouldn't be offered.
+  Future<List<ModifierGroupAdmin>> list({bool includeInactive = false}) async {
     try {
-      final response = await _apiClient.dio.get<List<dynamic>>('/modifier-groups');
+      final response = await _apiClient.dio.get<List<dynamic>>(
+        '/modifier-groups',
+        queryParameters: includeInactive ? {'includeInactive': 'true'} : null,
+      );
       return (response.data ?? const [])
           .map((g) => ModifierGroupAdmin.fromJson(g as Map<String, dynamic>))
           .toList();

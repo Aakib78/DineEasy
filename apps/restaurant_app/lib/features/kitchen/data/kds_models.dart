@@ -6,13 +6,23 @@ library;
 import '../../pos/data/pos_models.dart' show OrderItemModifierSummary;
 
 class KitchenStation {
-  const KitchenStation({required this.id, required this.name});
+  const KitchenStation({required this.id, required this.name, required this.isActive});
 
-  factory KitchenStation.fromJson(Map<String, dynamic> json) =>
-      KitchenStation(id: json['id'] as String, name: json['name'] as String);
+  factory KitchenStation.fromJson(Map<String, dynamic> json) => KitchenStation(
+    id: json['id'] as String,
+    name: json['name'] as String,
+    isActive: json['isActive'] as bool? ?? true,
+  );
 
   final String id;
   final String name;
+
+  /// v1 doesn't route any KOT to a station yet (every `KitchenOrder.stationId` is created
+  /// `null` — see `OrdersService.createKitchenOrder`'s doc comment on the backend), so today a
+  /// station only exists as a manual filter on the KDS queue view — deactivating one just
+  /// removes it from that filter's chip list and from `KitchenStationsScreen`'s default view,
+  /// it doesn't change what any ticket shows.
+  final bool isActive;
 }
 
 enum KitchenItemStatus { newItem, preparing, ready, completed, cancelled }

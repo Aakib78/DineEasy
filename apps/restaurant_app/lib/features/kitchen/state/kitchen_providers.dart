@@ -12,6 +12,13 @@ final kitchenStationsProvider = FutureProvider.autoDispose<List<KitchenStation>>
   return ref.watch(kitchenRepositoryProvider).listStations();
 });
 
+/// Active + inactive — backs `KitchenStationsScreen` (Settings), distinct from
+/// [kitchenStationsProvider] above (the KDS filter chips, active-only) so deactivating a
+/// station there doesn't make it vanish from the one screen that could reactivate it.
+final kitchenStationsAdminProvider = FutureProvider.autoDispose<List<KitchenStation>>((ref) {
+  return ref.watch(kitchenRepositoryProvider).listStations(includeInactive: true);
+});
+
 /// `null` means "all stations" — the KDS board's default view. Plain mutable state rather than
 /// persisted anywhere: which station a given kitchen terminal is filtered to is a per-device,
 /// per-session choice (a terminal physically mounted at the grill station stays on "Grill" for

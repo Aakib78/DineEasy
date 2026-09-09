@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { KitchenService } from './kitchen.service';
 import { CreateKitchenStationDto } from './dto/create-station.dto';
+import { UpdateKitchenStationDto } from './dto/update-station.dto';
 import { UpdateKitchenItemStatusDto } from './dto/update-kitchen-item-status.dto';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -47,7 +48,26 @@ export class KitchenController {
 
   @Get('kitchen/stations')
   @RequirePermission(PERMISSIONS.KITCHEN_VIEW)
-  listStations(@CurrentUser() user: AuthenticatedUser) {
-    return this.kitchenService.listStations(requireActiveOutlet(user));
+  listStations(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('includeInactive') includeInactive?: string,
+  ) {
+    return this.kitchenService.listStations(requireActiveOutlet(user), includeInactive === 'true');
+  }
+
+  @Patch('kitchen/stations/:id')
+  @RequirePermission(PERMISSIONS.SETTINGS_MANAGE)
+  updateStation(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateKitchenStationDto,
+  ) {
+    return this.kitchenService.updateStation(
+      user.organizationId,
+      requireActiveOutlet(user),
+      id,
+      dto,
+      user.userId,
+    );
   }
 }

@@ -347,13 +347,33 @@ Kitchen/KDS, Billing, Reports) builds on top of, not those features themselves:
   no Flutter/Dart SDK here; the backend fix was verified with `tsc --noEmit` (unchanged) and
   eslint (clean).
 
+- **Kitchen stations management** (`lib/features/kitchen/kitchen_stations_screen.dart`, reached
+  via Settings' new "Kitchen stations" entry): `POST /kitchen/stations` existed with zero UI
+  callers — `GET /kitchen/stations` was only ever consumed by the KDS filter chips
+  (`kds_screen.dart`). `kitchen.view`-gated to reach, `settings.manage`-gated to create/edit
+  (matching the backend's own gate on `createStation`/the new `updateStation`). Explicit on-screen
+  copy that this doesn't do what the name might suggest yet: v1 never routes a KOT to a station
+  (`KitchenOrder.stationId` is always created `null`), so a station is only a manual KDS filter
+  today, not something orders get assigned to. Backend gained `PATCH /kitchen/stations/:id`
+  (name + `isActive`) — `KitchenStation` had no update/delete endpoint at all before this.
+  Building this also surfaced a latent gap in two already-shipped screens: `ModifierGroupsScreen`
+  and `TaxGroupsScreen` both list from endpoints that filter to `isActive: true`
+  unconditionally, so deactivating one made it disappear from the only screen that could
+  reactivate it. Fixed with an opt-in `includeInactive` query param (default `false`, so
+  `ItemEditScreen`'s attach-pickers — the pre-existing callers — are unaffected) on all three list
+  endpoints (`GET /modifier-groups`, `GET /tax-groups`, `GET /kitchen/stations`); each of those
+  two screens now reads a separate `*AdminProvider` (active + inactive) instead of the
+  active-only provider the item picker still uses. Not yet verified in this environment — no
+  Flutter/Dart SDK here; the backend changes were verified with `tsc --noEmit` (unchanged) and
+  eslint (clean).
+
 **Not built yet**: offline/local-cache behavior (tracked with the LAN/offline backend slice —
 docs/offline-mode.md), real OS-level push/local notifications (the in-app inbox above is the
 step before that — it's a poll-driven bell, not a system notification), and the
 Windows/Android platform scaffolding itself (see below). Every permission-gated feature-area
 destination in the nav shell (POS, Tables, Kitchen, Billing, Reports, Staff) — and now Settings,
-via its Business profile, Printers, Menu, and Audit log entries — has a real screen; there are
-no placeholder destinations left.
+via its Business profile, Printers, Menu, Audit log, and Kitchen stations entries — has a real
+screen; there are no placeholder destinations left.
 
 ## Why there's no `android/`, `ios/`, or `windows/` folder here
 

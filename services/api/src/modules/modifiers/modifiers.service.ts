@@ -58,9 +58,12 @@ export class ModifiersService {
     return this.getById(outletId, group.id);
   }
 
-  async listForOutlet(outletId: string) {
+  async listForOutlet(outletId: string, includeInactive = false) {
     return this.prisma.modifierGroup.findMany({
-      where: { outletId, isActive: true },
+      where: { outletId, ...(includeInactive ? {} : { isActive: true }) },
+      // Modifiers within a group are still filtered to active-only regardless — an admin
+      // reactivating a deactivated group via `includeInactive` reactivates the group, not every
+      // modifier inside it; those are edited individually (see `updateModifier`).
       include: { modifiers: { where: { isActive: true }, orderBy: { displayOrder: 'asc' } } },
       orderBy: { displayOrder: 'asc' },
     });

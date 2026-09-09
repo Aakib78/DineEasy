@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ModifiersService } from './modifiers.service';
 import { CreateModifierGroupDto } from './dto/create-modifier-group.dto';
 import { UpdateModifierGroupDto } from './dto/update-modifier-group.dto';
@@ -25,10 +25,17 @@ export class ModifiersController {
     );
   }
 
+  // `includeInactive` defaults off — the only pre-existing caller (this same list, before this
+  // param existed) always wanted active-only, and a management screen that deactivates a group
+  // from this same list would otherwise never be able to see it again to reactivate it (there's
+  // no other endpoint that lists by outlet). Opt-in rather than a behavior change for anyone else.
   @Get()
   @RequirePermission(PERMISSIONS.MENU_VIEW)
-  list(@CurrentUser() user: AuthenticatedUser) {
-    return this.modifiersService.listForOutlet(requireActiveOutlet(user));
+  list(@CurrentUser() user: AuthenticatedUser, @Query('includeInactive') includeInactive?: string) {
+    return this.modifiersService.listForOutlet(
+      requireActiveOutlet(user),
+      includeInactive === 'true',
+    );
   }
 
   @Get(':id')

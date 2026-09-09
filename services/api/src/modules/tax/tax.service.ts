@@ -48,9 +48,9 @@ export class TaxService {
     return this.getById(outletId, taxGroup.id);
   }
 
-  async listForOutlet(outletId: string) {
+  async listForOutlet(outletId: string, includeInactive = false) {
     return this.prisma.taxGroup.findMany({
-      where: { outletId, isActive: true },
+      where: { outletId, ...(includeInactive ? {} : { isActive: true }) },
       include: { components: true },
       orderBy: { name: 'asc' },
     });
