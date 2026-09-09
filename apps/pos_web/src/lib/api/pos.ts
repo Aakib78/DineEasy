@@ -167,4 +167,10 @@ export const printersApi = {
    * (`PrintersService.listJobs`). Backs the printer health/job-history view; see `PrinterJob`'s
    * doc comment in `@dineeasy/shared-types` for what's (not) reliably in `payload`. */
   jobs: (printerId: string) => apiRequest<PrinterJob[]>(`/printers/${printerId}/jobs`),
+
+  /** Staff-initiated retry for a `FAILED` job — resets it to `QUEUED` with a fresh attempts
+   * budget so the print agent's next poll picks it back up. Only legal on a `FAILED` job (the
+   * backend 400s otherwise); was read-only until now, see `PrintersService.retryJob`'s doc
+   * comment on the backend for why. */
+  retryJob: (jobId: string) => apiRequest<PrinterJob>(`/printers/jobs/${jobId}/retry`, { method: 'POST' }),
 };

@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
-import { NotFoundDomainError } from '../../common/errors/domain-errors';
+import { NotFoundDomainError, ValidationDomainError } from '../../common/errors/domain-errors';
 import { AuditLogService } from '../audit/audit-log.service';
 import { CreatePrinterDto } from './dto/create-printer.dto';
 import { EnqueuePrintJobDto } from './dto/enqueue-print-job.dto';
@@ -161,6 +161,46 @@ export class PrintersService {
         data: { status: dto.status },
       });
     }
+
+    return this.prisma.printerJob.findFirst({ where: { id: jobId } });
+  }
+
+  /**
+   * Staff-initiated retry for a job that's exhausted its automatic `MAX_ATTEMPTS` retries and
+   * landed `FAILED` — the print agent has no self-retry-forever behavior by design (a
+   * jammed/offline printer shouldn't spin an unbounded queue, see `updateJobStatus` above), so
+   * getting a stuck job moving again used to require a direct database edit; both
+   * `PrinterJobsScreen`/`printer_jobs_screen.dart` were explicitly read-only (see
+   * docs/printing.md's "Still not built"). Resets to a fresh `QUEUED` state with a full new
+   * attempts budget, same as a brand-new job — the print agent's next poll just picks it back
+   * up, no other change needed on that side. Only a `FAILED` job can be retried: `QUEUED` is
+   * already going to be tried, and `SENT`/`ACKED` already succeeded — retrying either of those
+   * would mean printing the same ticket again, which isn't what "retry" should mean here.
+   */
+  async retryJob(organizationId: string, outletId: string, jobId: string, actorUserId: string) {
+    const job = await this.prisma.printerJob.findFirst({
+      where: { id: jobId, printer: { outletId } },
+    });
+    if (!job) throw new NotFoundDomainError('PrinterJob', jobId);
+    if (job.status !== 'FAILED') {
+      throw new ValidationDomainError(
+        `Only a FAILED job can be retried (this one is ${job.status}).`,
+      );
+    }
+
+    await this.prisma.printerJob.updateMany({
+      where: { id: jobId },
+      data: { status: 'QUEUED', attempts: 0, lastError: null },
+    });
+
+    await this.auditLog.record({
+      organizationId,
+      outletId,
+      actorUserId,
+      action: 'printer_job.retried',
+      entityType: 'PrinterJob',
+      entityId: jobId,
+    });
 
     return this.prisma.printerJob.findFirst({ where: { id: jobId } });
   }

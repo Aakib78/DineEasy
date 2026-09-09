@@ -57,4 +57,16 @@ export class PrintersController {
   ) {
     return this.printersService.updateJobStatus(requireActiveOutlet(user), jobId, dto);
   }
+
+  /** Staff-initiated, distinct from `updateJobStatus` above (which is the print agent's own
+   * report-back channel) — see `PrintersService.retryJob`'s doc comment. */
+  @Post('jobs/:jobId/retry')
+  retryJob(@CurrentUser() user: AuthenticatedUser, @Param('jobId') jobId: string) {
+    return this.printersService.retryJob(
+      user.organizationId,
+      requireActiveOutlet(user),
+      jobId,
+      user.userId,
+    );
+  }
 }
