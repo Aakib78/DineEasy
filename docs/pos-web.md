@@ -83,9 +83,16 @@ comment). Before this, `apps/customer_web/src/index.css` was the *only* place th
 building this second app either meant copy-pasting that block (silent drift risk the moment one
 gets tweaked and the other doesn't) or centralizing once, which is what happened.
 
-The Flutter app's `colorSchemeSeed: Color(0xFFE85D2C)` (`apps/restaurant_app/lib/app.dart`) is the
-same accent, kept in sync by hand — Dart can't import a TypeScript module, same tradeoff already
-made for `lib/core/rbac/permissions.dart`.
+The Flutter app's `_brandSeed = Color(0xFFE85D2C)` (`apps/restaurant_app/lib/app.dart`) is the same
+accent, kept in sync by hand — Dart can't import a TypeScript module, same tradeoff already made
+for `lib/core/rbac/permissions.dart`. The Flutter app derives its `ColorScheme` from that seed via
+`ColorScheme.fromSeed(..., dynamicSchemeVariant: DynamicSchemeVariant.vibrant)` — a deliberately
+bolder/more saturated Material 3 tonal palette than the default `tonalSpot` variant, chosen because
+a fast-moving restaurant floor tool benefits from higher-contrast, easier-to-scan colors more than
+the calmer default suits (see `_buildTheme`'s doc comment in `app.dart`); the two web apps don't
+have an equivalent "variant" concept — `theme.ts`'s tokens are hand-picked literal values, not
+algorithmically derived — so this is a place the two color systems intentionally diverge in
+*process* while still sharing the same source accent.
 
 ## What's explicitly not built
 
