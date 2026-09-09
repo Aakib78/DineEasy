@@ -70,6 +70,17 @@ host stand.
   RBAC `PERMISSIONS` catalog and `generateId()` (the `crypto.randomUUID()`-secure-context
   workaround — see `docs/troubleshooting.md`) both moved here from being customer-web-only so
   this app gets them by construction instead of by copy-paste. See docs/architecture.md §13.
+- **Print bill** (`billing.view`-gated button on `BillingDetailScreen`, `POST /invoices/:id/print`):
+  `BillingService.generateInvoice` already auto-queues a receipt print job the instant a bill is
+  first created, but only once (it's idempotent and doesn't re-print on a repeat call) — this is
+  the explicit reprint, for a printer that wasn't ready at that exact moment or a second copy for
+  the customer. See `docs/printing.md`.
+- **Printers screen** (`printers.manage`-gated, `src/features/printers/PrintersScreen.tsx`, at
+  `/printers`): lists an outlet's registered printers and lets an Owner/Manager add one — the
+  piece `services/print-agent/README.md` always assumed existed ("create a printer via Settings →
+  Printers") but that no app actually had until now. `apps/restaurant_app` has no equivalent yet;
+  its own Settings destination is still a placeholder screen. See docs/printing.md's "Operator
+  visibility" section for exactly what this does and doesn't cover (no job history/queue view yet).
 
 ## Centralized color theme
 
@@ -96,8 +107,12 @@ algorithmically derived — so this is a place the two color systems intentional
 
 ## What's explicitly not built
 
-Kitchen display (KDS) and staff/menu/settings management screens are Flutter-only in v1 — this
-app is scoped to the counter-facing POS/Waiter/Billing workflow, not full back-office management.
+Kitchen display (KDS) and staff/menu management screens are Flutter-only in v1 — this app is
+scoped to the counter-facing POS/Waiter/Billing workflow, not full back-office management.
+Printers is the one exception (see "What's built" above) — neither app had it until this
+session, and it landed here first since pos_web already runs on whatever machine ends up
+running `services/print-agent` in the common single-machine deployment; `apps/restaurant_app`'s
+own Settings destination is still an unbuilt placeholder screen (`home_shell.dart`).
 Discounts (`orders.discount`) and refunds (`payments.refund`) have backend endpoints and RBAC
 permission keys but no UI here yet (the Flutter app doesn't have discount/refund UI either — both
 are tracked as a follow-up, not specific to this app). No offline queue — same LAN-first, no

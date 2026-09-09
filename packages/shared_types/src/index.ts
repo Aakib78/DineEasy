@@ -31,6 +31,7 @@ export * from './menu.js';
 export * from './orders.js';
 export * from './billing.js';
 export * from './tables.js';
+export * from './printers.js';
 export * from './permissions.js';
 export * from './theme.js';
 export * from './id.js';

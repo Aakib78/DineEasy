@@ -7,6 +7,7 @@ import { TablesScreen } from './features/tables/TablesScreen';
 import { OrderScreen } from './features/order/OrderScreen';
 import { BillingScreen } from './features/billing/BillingScreen';
 import { BillingDetailScreen } from './features/billing/BillingDetailScreen';
+import { PrintersScreen } from './features/printers/PrintersScreen';
 
 function AppShell({ children }: { children: ReactNode }) {
   return (
@@ -50,6 +51,14 @@ export function App() {
         element={
           <AppShell>
             <BillingDetailScreen />
+          </AppShell>
+        }
+      />
+      <Route
+        path="/printers"
+        element={
+          <AppShell>
+            <PrintersScreen />
           </AppShell>
         }
       />

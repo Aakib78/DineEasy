@@ -763,6 +763,25 @@ button {
   color: var(--status-success);
 }
 
+.printers-screen__hint {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+}
+
+.printers-screen__hint code {
+  font-size: 12px;
+  background: var(--surface-alt, rgba(0, 0, 0, 0.05));
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+
+.printers-screen__network-fields {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 12px;
+}
+
 .billing-card {
   background: var(--surface);
   border: 1px solid var(--border);
