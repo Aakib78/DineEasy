@@ -103,6 +103,12 @@ This wasn't actually a mismatch between the seed data and the schema — `id Str
 
 Pending confirmation from a real order placed against the seeded demo menu — this sandbox has no live database to place an order against either way.
 
+### Fixed in this repo: an order stays "open" on its table forever after the kitchen marks everything Done
+
+Caught testing the very first full order lifecycle end to end — place an order → kitchen works it → table never clears. This is expected in one sense and a real gap in another. Expected: the Kitchen board only ever drives an order as far as `READY` (`KITCHEN_DRIVEN_PATH` in `services/api/src/modules/kitchen/kitchen.service.ts` stops there on purpose — the kitchen has no way to know when a waiter has actually carried the food to the table, so `READY` → `SERVED` is deliberately a separate action). The gap: the backend has always had `POST /orders/:id/serve` for exactly this, but nothing in the Flutter staff app ever called it — there was no "mark served" control anywhere in the UI, so an order could reach `READY` and then have no way forward at all. Billing wouldn't offer it either (`billing_screen.dart` only lists `SERVED` orders).
+
+Fixed by adding a "Mark served" button to the existing-order banner in `OrderBuilderScreen` (shown when you tap back into a table that already has an order) — visible only when the order is `READY`, the signed-in user has `orders.update`, and there isn't already a serve call in flight. See `docs/flutter-app.md`'s changelog entry for the full detail. Not verified in this environment — no Flutter/Dart SDK here, same limitation as everywhere else Flutter-side (see "Why there's no `android/`..." above) — pending confirmation from a real run.
+
 ### `docker compose up postgres redis` fails with `address already in use` on port 5432, even though nothing shows up in `lsof`
 
 Seen in practice on macOS with Docker Desktop after an earlier `docker compose up` attempt got interrupted partway (for example, the `web` image build failing per the entry above, or Docker Desktop being restarted mid-`up`) and left a container behind in `Created` state (`docker ps -a` shows it, but never `Up`). Removing that container (`docker rm <name>`) and retrying can still fail with the same port error — Docker Desktop's own internal port-forwarding layer (inside its VM, not your host OS) can hold a stale reservation that a plain container removal doesn't clear, which is also why the host's `lsof -iTCP:5432` shows nothing: the conflict isn't visible at the macOS network level at all.

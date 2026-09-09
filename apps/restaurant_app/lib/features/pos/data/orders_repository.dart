@@ -67,4 +67,19 @@ class OrdersRepository {
       throw ApiException.fromDioException(e);
     }
   }
+
+  /// READY -> SERVED (backend: `POST /orders/:id/serve`, `orders.update`). The kitchen marking
+  /// every item done only gets an order to READY — the kitchen has no way to know when a
+  /// waiter has actually carried the food to the table, so this is a deliberate, separate
+  /// staff action rather than something auto-derived from kitchen-item status. Until this is
+  /// called, the order stays "open" (Billing won't offer it — see billing_screen.dart's doc
+  /// comment) even after every kitchen item shows Done.
+  Future<Order> serve(String orderId) async {
+    try {
+      final response = await _apiClient.dio.post<Map<String, dynamic>>('/orders/$orderId/serve');
+      return Order.fromJson(response.data!);
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
 }

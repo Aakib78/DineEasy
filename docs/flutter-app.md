@@ -225,6 +225,8 @@ Kitchen/KDS, Billing, Reports) builds on top of, not those features themselves:
   `showDialog` anywhere, since every earlier destructive-ish action was a full form submission
   rather than a single tap. `StaffRepository.removeRoleAssignment` added alongside.
 
+- **"Mark served" action** (`OrderBuilderScreen`'s `_ExistingOrderBanner`, `OrdersRepository.serve`): closes a real gap caught on the very first live end-to-end order (see `docs/troubleshooting.md`) — the backend has always had `POST /orders/:id/serve` (`READY` → `SERVED`), but nothing in the app ever called it. The Kitchen board only drives an order to `READY` (see `KITCHEN_DRIVEN_PATH` in `services/api/src/modules/kitchen/kitchen.service.ts` — it deliberately never sets `SERVED` itself, since the kitchen has no way to know when a waiter actually carries the food out), so an order that had every kitchen item marked Done just sat at `READY` forever: the table kept showing an open order, and Billing never offered it (it only lists `SERVED` orders — see that screen's own doc comment). Added a "Mark served" button to the existing-order banner shown when continuing an order for an occupied table, visible only when `order.status == OrderStatus.ready`, the signed-in user has `orders.update`, and no serve call is already in flight — same permission the backend enforces, same "hide rather than disable" UI convention as the rest of this app.
+
 **Not built yet**: offline/local-cache behavior (tracked with the LAN/offline backend slice —
 docs/offline-mode.md), real OS-level push/local notifications (the in-app inbox above is the
 step before that — it's a poll-driven bell, not a system notification), and the

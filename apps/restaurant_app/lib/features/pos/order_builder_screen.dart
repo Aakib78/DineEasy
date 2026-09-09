@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/auth/auth_session.dart';
 import '../../core/network/api_exception.dart';
+import '../../core/rbac/permissions.dart';
 import 'data/pos_models.dart';
 import 'state/pos_cart.dart';
 import 'state/pos_providers.dart';
@@ -37,11 +39,13 @@ class OrderBuilderScreen extends ConsumerStatefulWidget {
 class _OrderBuilderScreenState extends ConsumerState<OrderBuilderScreen> {
   bool _submitting = false;
   String? _submitError;
+  bool _serving = false;
 
   @override
   Widget build(BuildContext context) {
     final menuAsync = ref.watch(menuProvider);
     final continuingOrder = widget.existingOrder;
+    final canServe = ref.watch(currentUserProvider)?.hasPermission(Permissions.ordersUpdate) ?? false;
 
     return Scaffold(
       appBar: AppBar(
@@ -53,7 +57,16 @@ class _OrderBuilderScreenState extends ConsumerState<OrderBuilderScreen> {
       ),
       body: Column(
         children: [
-          if (continuingOrder != null) _ExistingOrderBanner(order: continuingOrder),
+          if (continuingOrder != null)
+            _ExistingOrderBanner(
+              order: continuingOrder,
+              // Only READY orders can be served (see order-state-machine.ts's READY ->
+              // SERVED edge) — showing this for any other status would just 400.
+              onMarkServed: continuingOrder.status == OrderStatus.ready && canServe && !_serving
+                  ? () => _handleMarkServed(continuingOrder.id)
+                  : null,
+              isServing: _serving,
+            ),
           if (_submitError != null)
             Container(
               width: double.infinity,
@@ -135,12 +148,47 @@ class _OrderBuilderScreenState extends ConsumerState<OrderBuilderScreen> {
       if (mounted) setState(() => _submitting = false);
     }
   }
+
+  /// READY -> SERVED. Kitchen marking every item Done only gets the order to READY — it has no
+  /// way to know when a waiter has actually carried the food to the table, so this is its own
+  /// explicit action rather than something the kitchen screen triggers automatically. Until a
+  /// staff member calls this, the order stays "open" on the table and Billing won't offer it
+  /// (see billing_screen.dart's doc comment on what it expects).
+  Future<void> _handleMarkServed(String orderId) async {
+    setState(() => _serving = true);
+
+    try {
+      await ref.read(ordersRepositoryProvider).serve(orderId);
+      ref.invalidate(activeOrdersProvider);
+      ref.invalidate(tablesProvider);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Order marked served')),
+      );
+      Navigator.of(context).pop();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _serving = false);
+    }
+  }
 }
 
 class _ExistingOrderBanner extends StatelessWidget {
-  const _ExistingOrderBanner({required this.order});
+  const _ExistingOrderBanner({
+    required this.order,
+    required this.onMarkServed,
+    required this.isServing,
+  });
 
   final Order order;
+  /// Null when this order isn't eligible to be served right now (wrong status, no permission,
+  /// or a serve call is already in flight) — hides the button rather than showing it disabled,
+  /// since "why is this greyed out" isn't obvious to a busy waiter mid-shift.
+  final VoidCallback? onMarkServed;
+  final bool isServing;
 
   @override
   Widget build(BuildContext context) {
@@ -160,6 +208,19 @@ class _ExistingOrderBanner extends StatelessWidget {
               style: TextStyle(color: Theme.of(context).colorScheme.onSecondaryContainer),
             ),
           ),
+          if (onMarkServed != null || isServing) ...[
+            const SizedBox(width: 8),
+            FilledButton.tonal(
+              onPressed: onMarkServed,
+              child: isServing
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Mark served'),
+            ),
+          ],
         ],
       ),
     );
