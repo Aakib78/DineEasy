@@ -470,6 +470,17 @@ class _EditTableSheetState extends ConsumerState<_EditTableSheet> {
             if (value != null) setState(() => _status = value);
           },
         ),
+        if (_status == TableStatus.available && widget.table.status != TableStatus.available)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              'If this table has an open session, saving this also closes it — same as the '
+              "close-table action. Blocked if it still has an unpaid order.",
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.outline),
+            ),
+          ),
         const SizedBox(height: 16),
         const Divider(),
         Row(
