@@ -9,6 +9,7 @@ import { MenuItemCard } from './MenuItemCard';
 import { ItemCustomizeSheet } from './ItemCustomizeSheet';
 import { CartBar } from '../../components/CartBar';
 import { Header } from '../../components/Header';
+import { categoryIcon } from '../../lib/menu/food-icon';
 
 export function MenuScreen() {
   const { session, clearSession } = useSession();
@@ -58,11 +59,21 @@ export function MenuScreen() {
 
       {categories?.map((category) => (
         <section key={category.id} className="menu-category">
-          <h2>{category.name}</h2>
+          <h2 className="menu-category__heading">
+            <span className="menu-category__icon" aria-hidden="true">
+              {categoryIcon(category.name)}
+            </span>
+            {category.name}
+          </h2>
           {category.description && <p className="menu-category__description">{category.description}</p>}
           <div className="menu-item-grid">
             {category.items.map((item) => (
-              <MenuItemCard key={item.id} item={item} onSelect={() => setActiveItem(item)} />
+              <MenuItemCard
+                key={item.id}
+                item={item}
+                categoryName={category.name}
+                onSelect={() => setActiveItem(item)}
+              />
             ))}
           </div>
         </section>

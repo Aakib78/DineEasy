@@ -50,13 +50,35 @@ p {
 }
 
 .app-header {
-  padding: 20px 16px 8px;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 22px 18px;
+  margin: -16px -16px 20px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+  border-radius: 0 0 20px 20px;
+  box-shadow: 0 6px 20px rgba(201, 74, 31, 0.25);
+}
+
+.app-header h1 {
+  color: white;
+  font-size: 20px;
+}
+
+.app-header__mark {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
 }
 
 .app-header__table {
-  color: var(--accent-dark);
+  color: rgba(255, 255, 255, 0.85);
   font-weight: 600;
 }
 
@@ -91,7 +113,18 @@ p {
 }
 
 .menu-category {
-  margin-bottom: 24px;
+  margin-bottom: 28px;
+}
+
+.menu-category__heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.menu-category__icon {
+  font-size: 20px;
+  line-height: 1;
 }
 
 .menu-category__description {
@@ -110,11 +143,20 @@ p {
   text-align: left;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 14px;
   padding: 12px;
   cursor: pointer;
   font: inherit;
   color: inherit;
+  box-shadow: 0 1px 3px rgba(28, 25, 23, 0.06);
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+.menu-item-card:not(:disabled):active {
+  transform: scale(0.98);
+  box-shadow: 0 1px 2px rgba(28, 25, 23, 0.06);
 }
 
 .menu-item-card:disabled {
@@ -122,12 +164,35 @@ p {
   cursor: not-allowed;
 }
 
-.menu-item-card__image {
+.menu-item-card__image,
+.menu-item-card__icon {
   width: 72px;
   height: 72px;
-  border-radius: 8px;
-  object-fit: cover;
+  border-radius: 10px;
   flex-shrink: 0;
+}
+
+.menu-item-card__image {
+  object-fit: cover;
+}
+
+.menu-item-card__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30px;
+  background: #f5f0eb;
+  border: 1px solid var(--border);
+}
+
+.menu-item-card__icon--veg {
+  background: #f0faf2;
+  border-color: #cdeed6;
+}
+
+.menu-item-card__icon--nonveg {
+  background: #fdf2f0;
+  border-color: #f6d3cc;
 }
 
 .menu-item-card__body {
@@ -164,6 +229,7 @@ p {
 
 .menu-item-card__price {
   font-weight: 600;
+  color: var(--accent-dark);
 }
 
 .unavailable-badge {
@@ -217,7 +283,7 @@ p {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: var(--accent);
+  background: linear-gradient(135deg, var(--accent), var(--accent-dark));
   color: white;
   border: none;
   border-radius: 12px;
@@ -225,7 +291,7 @@ p {
   font: inherit;
   font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
 }
 
 .sheet-backdrop {

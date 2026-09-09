@@ -211,39 +211,41 @@ async function main() {
     {
       name: 'Starters',
       items: [
-        item('Paneer Tikka', 220, ['Spice'], []),
-        item('Veg Spring Roll', 180, [], []),
-        item('Chicken 65', 260, ['Spice'], []),
-        item('Hara Bhara Kebab', 200, [], []),
-        item('Chilli Paneer', 230, ['Spice'], []),
-        item('Tandoori Chicken (Half)', 320, ['Spice'], []),
-        item('Crispy Corn', 190, [], []),
+        item('Paneer Tikka', 220, VEG, ['Spice'], []),
+        item('Veg Spring Roll', 180, VEG, [], []),
+        item('Chicken 65', 260, NON_VEG, ['Spice'], []),
+        item('Hara Bhara Kebab', 200, VEG, [], []),
+        item('Chilli Paneer', 230, VEG, ['Spice'], []),
+        item('Tandoori Chicken (Half)', 320, NON_VEG, ['Spice'], []),
+        item('Crispy Corn', 190, VEG, [], []),
+        item('Chicken Seekh Kebab', 280, NON_VEG, ['Spice'], []),
       ],
     },
     {
       name: 'Main Course',
       items: [
-        item('Butter Chicken', 340, [], [], variants(['Half', 'Full'], [220, 340])),
-        item('Dal Makhani', 220, [], []),
-        item('Paneer Butter Masala', 280, [], []),
-        item('Veg Biryani', 240, ['Spice'], []),
-        item('Chicken Biryani', 300, ['Spice'], []),
-        item('Kadai Paneer', 260, ['Spice'], []),
-        item('Palak Paneer', 250, [], []),
-        item('Rogan Josh', 360, ['Spice'], []),
-        item('Margherita Pizza', 280, [], ['Toppings'], variants(['Small', 'Medium', 'Large'], [220, 280, 350])),
-        item('Farmhouse Pizza', 320, [], ['Toppings'], variants(['Small', 'Medium', 'Large'], [260, 320, 400])),
+        item('Butter Chicken', 340, NON_VEG, [], [], variants(['Half', 'Full'], [220, 340])),
+        item('Dal Makhani', 220, VEG, [], []),
+        item('Paneer Butter Masala', 280, VEG, [], []),
+        item('Veg Biryani', 240, VEG, ['Spice'], []),
+        item('Chicken Biryani', 300, NON_VEG, ['Spice'], []),
+        item('Kadai Paneer', 260, VEG, ['Spice'], []),
+        item('Palak Paneer', 250, VEG, [], []),
+        item('Rogan Josh', 360, NON_VEG, ['Spice'], []),
+        item('Egg Curry', 200, NON_VEG, ['Spice'], []),
+        item('Margherita Pizza', 280, VEG, [], ['Toppings'], variants(['Small', 'Medium', 'Large'], [220, 280, 350])),
+        item('Farmhouse Pizza', 320, VEG, [], ['Toppings'], variants(['Small', 'Medium', 'Large'], [260, 320, 400])),
       ],
     },
     {
       name: 'Beverages & Desserts',
       items: [
-        item('Masala Chai', 60, [], []),
-        item('Fresh Lime Soda', 90, [], []),
-        item('Cold Coffee', 140, [], []),
-        item('Mango Lassi', 130, [], []),
-        item('Gulab Jamun (2 pc)', 110, [], []),
-        item('Chocolate Brownie', 160, [], []),
+        item('Masala Chai', 60, VEG, [], []),
+        item('Fresh Lime Soda', 90, VEG, [], []),
+        item('Cold Coffee', 140, VEG, [], []),
+        item('Mango Lassi', 130, VEG, [], []),
+        item('Gulab Jamun (2 pc)', 110, VEG, [], []),
+        item('Chocolate Brownie', 160, VEG, [], []),
       ],
     },
   ];
@@ -258,16 +260,33 @@ async function main() {
 
     let itemOrder = 0;
     for (const it of cat.items) {
+      const order = itemOrder++;
+      // `update` here isn't `{}` — unlike most of this script's upserts, this one is a real
+      // sync-to-source on every re-run, not just a "create once, never touch again." Caught the
+      // hard way: `isVegetarian` was missing from `create` entirely for months (every item,
+      // Chicken 65 included, silently defaulted to the schema's `@default(true)`), and because
+      // this was previously `update: {}`, simply adding the field here wouldn't have fixed a
+      // single already-seeded database without a full reset — only new field values on new rows.
+      // See docs/troubleshooting.md's "Regenerate QR" entry for the same upsert-update-noop trap
+      // biting a different field; this one is deliberately NOT repeating it.
       const menuItem = await prisma.menuItem.upsert({
         where: { id: `demo-item-${slug(it.name)}` },
-        update: {},
+        update: {
+          categoryId: category.id,
+          taxGroupId: gst5.id,
+          name: it.name,
+          basePrice: it.price,
+          isVegetarian: it.isVeg,
+          displayOrder: order,
+        },
         create: {
           id: `demo-item-${slug(it.name)}`,
           categoryId: category.id,
           taxGroupId: gst5.id,
           name: it.name,
           basePrice: it.price,
-          displayOrder: itemOrder++,
+          isVegetarian: it.isVeg,
+          displayOrder: order,
         },
       });
 
@@ -315,15 +334,39 @@ async function main() {
 // Helpers
 // ---------------------------------------------------------------------------
 
+// Named rather than passing bare `true`/`false` at ~25 call sites above — a stray `true` there
+// reads as nothing in particular; `VEG`/`NON_VEG` reads as what it is at a glance, which matters
+// for a flag that's otherwise easy to get backwards for one item in a long list.
+const VEG = true;
+const NON_VEG = false;
+
 interface SeedItem {
   name: string;
   price: number;
+  /** Was silently dropped entirely until this was added — MenuItem.isVegetarian defaults to
+   *  `true` in the schema, so every seeded item (Chicken 65, Butter Chicken, Rogan Josh
+   *  included) was rendering with a green veg dot in both the POS and the customer QR menu.
+   *  Explicit per item now, specifically so that mistake can't happen silently again. */
+  isVeg: boolean;
   modifierGroups: string[];
   variants?: { name: string; price: number; isDefault?: boolean }[];
 }
 
-function item(name: string, price: number, _spice: string[], modifierGroups: string[], variantsList?: SeedItem['variants']): SeedItem {
-  return { name, price, modifierGroups: [..._spice.map(() => 'Spice'), ...modifierGroups], variants: variantsList };
+function item(
+  name: string,
+  price: number,
+  isVeg: boolean,
+  _spice: string[],
+  modifierGroups: string[],
+  variantsList?: SeedItem['variants'],
+): SeedItem {
+  return {
+    name,
+    price,
+    isVeg,
+    modifierGroups: [..._spice.map(() => 'Spice'), ...modifierGroups],
+    variants: variantsList,
+  };
 }
 
 function variants(names: string[], prices: number[]): SeedItem['variants'] {
