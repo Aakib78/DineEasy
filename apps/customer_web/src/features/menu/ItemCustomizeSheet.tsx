@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import Decimal from 'decimal.js';
 import type { MenuItem } from '../../lib/api/types';
 import type { CartLine } from '../../lib/cart/cart-types';
+import { generateId } from '../../lib/id';
 import { formatMoney } from '../../lib/cart/price-estimate';
 
 interface Props {
@@ -79,7 +80,9 @@ export function ItemCustomizeSheet({ item, onClose, onAdd }: Props) {
       .map((m) => ({ id: m.id, name: m.name, priceDelta: m.priceDelta }));
 
     onAdd({
-      lineId: crypto.randomUUID(),
+      // Not crypto.randomUUID() directly — see lib/id.ts's doc comment for why that silently
+      // breaks "Add to cart" over plain HTTP on a LAN, which is how this app is always served.
+      lineId: generateId(),
       menuItemId: item.id,
       menuItemName: item.name,
       variantId,

@@ -65,6 +65,19 @@ eventually, `services/api` itself) that talks to the API entirely client-side.
   `src/index.css`'s `--accent`) square background well inside the safe zone, so it survives a
   circular/squircle OS icon mask without clipping.
 
+  **Known limitation, not yet worked around**: service worker registration (`navigator.serviceWorker`)
+  only runs in a browser "secure context" — HTTPS, or `localhost` — and this app is deliberately
+  served over plain HTTP on the restaurant's LAN (docs/architecture.md §1, no TLS in v1). A real
+  diner loading the menu at its LAN address (e.g. `http://192.168.1.49:5173/...`, never
+  `localhost`) will not get the install prompt or a registered service worker at all, even
+  though `dist/sw.js` and the manifest are both generated correctly — the browser silently
+  declines to register it, no error surfaces anywhere. Ordering itself is completely unaffected
+  (plain `fetch` calls have no such restriction — see the `crypto.randomUUID` entry in
+  `docs/troubleshooting.md` for the *other* API this same LAN-over-HTTP setup broke, which did
+  visibly break something and is fixed); this is specifically about the "add to home screen"
+  installability feature being effectively dead in the actual deployment model until the
+  restaurant server has a real TLS certificate for its LAN address, which v1 doesn't attempt.
+
 ## What's explicitly not built
 
 Online payment (spec says "pay at counter, or online payment when configured" — no gateway is
