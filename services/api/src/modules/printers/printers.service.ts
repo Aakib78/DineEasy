@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { NotFoundDomainError } from '../../common/errors/domain-errors';
 import { AuditLogService } from '../audit/audit-log.service';
@@ -67,7 +68,14 @@ export class PrintersService {
 
   async enqueueJob(outletId: string, printerId: string, dto: EnqueuePrintJobDto) {
     await this.getPrinterOrThrow(outletId, printerId);
-    return this.prisma.printerJob.create({ data: { printerId, payload: dto.payload } });
+    // `dto.payload` is validated only as a plain object (`Record<string, unknown>` via
+    // class-validator's `@IsObject()` — deliberately opaque, see the class doc comment);
+    // Prisma's generated `Json` field type wants its own recursive `InputJsonValue`, which
+    // `unknown`-valued properties don't structurally satisfy even though any payload that
+    // passed validation is JSON-safe. Cast at this Prisma boundary.
+    return this.prisma.printerJob.create({
+      data: { printerId, payload: dto.payload as Prisma.InputJsonValue },
+    });
   }
 
   /**
@@ -90,7 +98,11 @@ export class PrintersService {
         where: { outletId, type, isActive: true },
       });
       await Promise.all(
-        printers.map((p) => this.prisma.printerJob.create({ data: { printerId: p.id, payload } })),
+        printers.map((p) =>
+          this.prisma.printerJob.create({
+            data: { printerId: p.id, payload: payload as Prisma.InputJsonValue },
+          }),
+        ),
       );
     } catch (err) {
       this.logger.warn(

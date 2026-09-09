@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { nanoid } from 'nanoid';
 import Decimal from 'decimal.js';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { TenantContextStore } from '../../common/context/tenant-context';
 import { NotFoundDomainError, ValidationDomainError } from '../../common/errors/domain-errors';
@@ -121,7 +122,13 @@ export class PaymentsService {
             providerEventId: dto.providerEventId,
             type: 'webhook',
             status: dto.status.toLowerCase(),
-            rawPayload: dto.rawPayload,
+            // `dto.rawPayload` is validated only as a plain object (`Record<string, unknown>`
+            // via class-validator's `@IsObject()`); Prisma's generated `Json` field type wants
+            // its own recursive `InputJsonValue`, which `unknown`-valued properties don't
+            // structurally satisfy even though any real object here is JSON-safe (it's parsed
+            // from a webhook body). Cast at this Prisma boundary, same pattern as `payload` in
+            // PrintersService.
+            rawPayload: dto.rawPayload as Prisma.InputJsonValue | undefined,
           },
         });
       } catch (err) {

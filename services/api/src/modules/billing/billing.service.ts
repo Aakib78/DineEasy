@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { TaxType } from '@prisma/client';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { NotFoundDomainError, ValidationDomainError } from '../../common/errors/domain-errors';
 import { AuditLogService } from '../audit/audit-log.service';
@@ -106,7 +107,12 @@ export class BillingService {
         await tx.invoiceTax.createMany({
           data: taxBreakdown.map((t) => ({
             invoiceId: created.id,
-            taxType: t.taxType,
+            // `invoice-tax.util.ts` is a pure-logic file with no Prisma dependency (so it
+            // stays unit-testable without a generated client — see its header comment), so
+            // `t.taxType` is a plain string there. Prisma's generated `TaxType` enum is
+            // structurally the same set of literals; this cast is the boundary between the
+            // two, same pattern as `OrderStatus` casts elsewhere (order-state-machine.ts).
+            taxType: t.taxType as TaxType,
             ratePercent: t.ratePercent,
             taxableAmount: t.taxableAmount,
             taxAmount: t.taxAmount,

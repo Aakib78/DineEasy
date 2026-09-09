@@ -1,10 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import Decimal from 'decimal.js';
+import { OrderStatus } from '@prisma/client';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { ReportRangeDto } from './dto/report-range.dto';
 
-/** Orders that represent completed, revenue-bearing sales — everything else (in-flight, voided) is excluded. */
-const SETTLED_STATUSES = ['PAID', 'COMPLETED'];
+/**
+ * Orders that represent completed, revenue-bearing sales — everything else (in-flight, voided)
+ * is excluded. NOT the same set as `ORDER_FINANCIALLY_SETTLED_STATUSES` in
+ * order-state-machine.ts (that one deliberately also includes CANCELLED/REFUNDED, for a
+ * different question — "is there anything left to collect on this order" — see that file's
+ * doc comment); reports specifically wants only orders that actually earned revenue.
+ */
+const SETTLED_STATUSES: OrderStatus[] = ['PAID', 'COMPLETED'];
 
 /**
  * Read-only reporting (spec §17). Every query here is a straightforward aggregate over
@@ -84,8 +91,8 @@ export class ReportsService {
     return grouped.map((g) => ({
       menuItemId: g.menuItemId,
       name: g.nameSnapshot,
-      quantitySold: g._sum.quantity ?? 0,
-      revenue: (g._sum.total ?? new Decimal(0)).toString(),
+      quantitySold: g._sum?.quantity ?? 0,
+      revenue: (g._sum?.total ?? new Decimal(0)).toString(),
     }));
   }
 
