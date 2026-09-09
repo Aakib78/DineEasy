@@ -111,6 +111,6 @@ See `docs/architecture.md` §15 for current test coverage status.
 
 ## Common workflows
 
-- **Reset the dev database**: `npm run --workspace services/api prisma:migrate:dev -- --name reset` then re-seed, or simpler: `docker compose -f infrastructure/docker/docker-compose.yml -f infrastructure/docker/docker-compose.dev.yml down -v && npm run docker:up` to wipe volumes entirely.
+- **Reset the dev database**: `npm run --workspace services/api prisma:migrate:dev -- --name reset` then re-seed, or simpler: `npm run docker:down -- -v && npm run docker:up` to wipe volumes entirely. (Prefer the `npm run docker:*` scripts over typing `docker compose ...` by hand — they already carry `--env-file .env`, which a bare `docker compose -f ... down` silently drops; see `docs/troubleshooting.md`.)
 - **Inspect the DB**: `npm run --workspace services/api prisma:studio`, or `psql $DATABASE_URL`.
 - **Full dockerized parity check**: `npm run docker:prod` builds and runs api+web+postgres+redis exactly as a restaurant's on-site server would, useful before a release.
