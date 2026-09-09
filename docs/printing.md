@@ -29,20 +29,33 @@ KOT/Invoice created
 
 **Implemented — the print agent** (`services/print-agent`, a separate small standalone Node/
 TypeScript process, not a NestJS module — see its own README.md for the full design): polls
-`nextQueuedJob`/reports via `updateJobStatus` for every configured `NETWORK` printer, renders
-the job's payload into ESC/POS bytes, and opens a raw TCP connection to port 9100 (the
-dominant convention for network thermal printers, and the target this was always scoped to —
-Indian QSRs/cafés overwhelmingly use this class of printer). `USB` remains modeled in the
-schema for forward-compatibility only; no driver is planned for v1, and the agent skips any
-printer configured that way. See `services/print-agent/README.md`'s "Verification status" for
-exactly how this was verified without physical printer hardware (a real local TCP server
-standing in for the printer, a real local HTTP server standing in for `services/api`, plus an
-actual end-to-end run of the compiled agent against both) and `docs/architecture.md` §15 for
-the authoritative "done vs. planned" list.
+`nextQueuedJob`/reports via `updateJobStatus` for every configured, active printer, renders the
+job's payload into ESC/POS bytes (`escpos.ts` — identical bytes regardless of transport), and
+delivers them one of two ways depending on the printer's `connectionType`:
+
+- **`NETWORK`** (`printer-socket.ts`): a raw TCP connection to `ipAddress:port` (almost always
+  9100, the dominant convention for network thermal printers, and the target this was always
+  scoped to — Indian QSRs/cafés overwhelmingly use this class of printer).
+- **`USB`** (`printer-usb.ts`, using the `usb`/libusb npm package): finds the first connected
+  device exposing a standard USB Printer-class (0x07) interface — vendor-independent, no
+  Epson-specific driver needed — claims it, and writes the ticket to its bulk OUT endpoint. No
+  device-identifying field is required on the `Printer` row for this in v1 (see that file's doc
+  comment for the reasoning and its `match` escape hatch for a machine with more than one USB
+  printer). Requires the printer to be physically connected to whichever machine runs the agent
+  — never a phone or tablet, which can't drive USB hardware for a client app to begin with.
+
+See `services/print-agent/README.md`'s "Verification status" for exactly how the `NETWORK`
+path was verified without physical printer hardware (a real local TCP server standing in for
+the printer, a real local HTTP server standing in for `services/api`, plus an actual
+end-to-end run of the compiled agent against both); the `USB` path is unit-tested against a
+mocked `usb` module (no real USB hardware exists in that verification environment either) — see
+`printer-usb.spec.ts`'s doc comment for why that's the right substitute where TCP/HTTP could use
+a real local stand-in instead. `docs/architecture.md` §15 has the authoritative "done vs.
+planned" list.
 
 ## Why this stays out of the domain layer
 
-`OrdersService` and `BillingService` have zero knowledge of ESC/POS, printer IPs, or retry logic — they only know how to enqueue a `PrinterJob` via `PrintersService.enqueueForType()`. This means: a restaurant with no printers configured yet still gets working KOT/billing (the queue just accumulates unconsumed jobs, harmlessly); building the print agent, adding USB support, a cloud print service, or a different receipt format later touches only that new component, never order/billing/kitchen logic; and a printer being offline for an hour never blocks taking new orders.
+`OrdersService` and `BillingService` have zero knowledge of ESC/POS, printer IPs, USB, or retry logic — they only know how to enqueue a `PrinterJob` via `PrintersService.enqueueForType()`. This means: a restaurant with no printers configured yet still gets working KOT/billing (the queue just accumulates unconsumed jobs, harmlessly); adding USB support to the print agent (done — see above) touched only that new component, never order/billing/kitchen logic, and the same is true for a future cloud print service or a different receipt format; and a printer being offline for an hour never blocks taking new orders.
 
 ## Operator visibility
 

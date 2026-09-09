@@ -12,11 +12,13 @@ import { useAuth } from '../../lib/auth/AuthContext';
  * or `POST /printers`)" but no app actually had that screen, so setting one up meant a raw curl
  * call. `printers.manage` (Owner/Manager only) gates the whole thing — see `PrintersController`.
  *
- * v1 scope, matching what the agent itself supports (`docs/printing.md`): a `NETWORK` printer
- * with an `ipAddress`/`port` is the only kind that actually prints. `USB` stays selectable
- * because it's a real column in the schema, but the form makes clear it won't be drained by
- * anything yet — a printer plugged into a phone or laptop's USB port has no path to a receipt
- * either way, since staff apps only ever enqueue jobs, never talk to hardware directly.
+ * Both `NETWORK` (IP/port) and `USB` are real, working connection types as of
+ * `services/print-agent`'s USB support (`src/printer-usb.ts`, using the standard USB Printer
+ * class — vendor-independent, no Epson-specific driver needed). Either way, this screen only
+ * ever registers a `Printer` row — it never talks to hardware itself, staff apps never do; see
+ * `docs/printing.md`. A `USB` printer must be plugged into whatever machine runs
+ * `services/print-agent` (not a phone — a client app can't drive USB hardware on its own, this
+ * process on a LAN computer is what does).
  */
 export function PrintersScreen() {
   const { hasPermission } = useAuth();
@@ -83,7 +85,7 @@ export function PrintersScreen() {
                 <span>
                   {printer.connectionType === 'NETWORK'
                     ? `${printer.ipAddress ?? '?'}:${printer.port ?? 9100}`
-                    : 'USB — not supported by the print agent yet'}
+                    : 'USB'}
                 </span>
               </div>
             </div>
@@ -203,8 +205,9 @@ function AddPrinterCard({ onCreated }: { onCreated: () => void }) {
         </div>
       ) : (
         <p className="printers-screen__hint">
-          USB printers aren't drained by the print agent yet (see its README) — this printer will
-          be saved but nothing will print to it until it's reconnected over the network instead.
+          The printer must be plugged into whichever computer runs <code>services/print-agent</code>{' '}
+          — not a phone or tablet. No specific device needs to be picked here: the agent finds the
+          first connected USB printer automatically. See its README's "Setting it up (USB)" section.
         </p>
       )}
 

@@ -7,11 +7,12 @@
 
 export type PrinterType = 'KITCHEN' | 'RECEIPT';
 
-/** `USB` exists in the schema for forward-compatibility only — `services/print-agent` has no
- * USB driver yet and skips any printer configured that way (see its README's "What's
- * explicitly not built"). A `NETWORK` printer with an `ipAddress`/`port` (almost always 9100,
- * the near-universal "raw 9100" convention for network thermal printers) is the only
- * connection type that actually prints in v1. */
+/** Both are real, working connection types — `services/print-agent` polls a `NETWORK` printer
+ * over raw TCP (`ipAddress`/`port`, almost always 9100, the near-universal "raw 9100"
+ * convention for network thermal printers) and a `USB` printer via the standard USB Printer
+ * class (`src/printer-usb.ts`, vendor-independent — no Epson-specific driver needed). A `USB`
+ * printer has no `ipAddress`/`port`; it must be physically connected to whichever machine runs
+ * `services/print-agent`, not a client device — see `docs/printing.md`. */
 export type PrinterConnectionType = 'NETWORK' | 'USB';
 
 export interface Printer {

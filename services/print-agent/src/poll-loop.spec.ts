@@ -45,8 +45,12 @@ describe('isPollable', () => {
     expect(isPollable(printer({ isActive: false }))).toBe(false);
   });
 
-  it('rejects a USB printer — no driver planned for v1', () => {
-    expect(isPollable(printer({ connectionType: 'USB' }))).toBe(false);
+  it('accepts an active USB printer — discovery happens at send time, see printer-usb.ts', () => {
+    expect(isPollable(printer({ connectionType: 'USB', ipAddress: null, port: null }))).toBe(true);
+  });
+
+  it('rejects an inactive USB printer', () => {
+    expect(isPollable(printer({ connectionType: 'USB', isActive: false }))).toBe(false);
   });
 
   it('rejects a NETWORK printer missing an IP or port', () => {
@@ -99,7 +103,8 @@ describe('pollOnce', () => {
     const client: PollLoopClient = {
       listPrinters: async () => [
         printer({ isActive: false }),
-        printer({ id: 'p2', connectionType: 'USB' }),
+        printer({ id: 'p2', ipAddress: null }),
+        printer({ id: 'p3', connectionType: 'USB', isActive: false }),
       ],
       nextQueuedJob,
       updateJobStatus: jest.fn(),

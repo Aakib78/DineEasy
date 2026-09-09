@@ -37,16 +37,14 @@ export interface PollLoopDeps {
   logger?: AgentLogger;
 }
 
-/** A printer is only pollable if it's active, on the network transport, and fully addressed
- * — see docs/printing.md: USB is modeled in the schema for forward-compatibility only, no
- * driver is planned for v1, so this agent has nothing to do with a USB-configured printer. */
+/** A printer is only pollable if it's active and fully addressed for its transport — a
+ * `NETWORK` printer needs an `ipAddress`/`port`, a `USB` printer needs nothing else (discovery
+ * happens at send time — see `printer-usb.ts`'s doc comment on why no device-identifying field
+ * is required here in v1). */
 export function isPollable(printer: PrinterRecord): boolean {
-  return (
-    printer.isActive &&
-    printer.connectionType === 'NETWORK' &&
-    !!printer.ipAddress &&
-    !!printer.port
-  );
+  if (!printer.isActive) return false;
+  if (printer.connectionType === 'NETWORK') return !!printer.ipAddress && !!printer.port;
+  return printer.connectionType === 'USB';
 }
 
 /** One full sweep: every pollable printer, at most one job each (the next cycle picks up
@@ -96,7 +94,9 @@ async function pollPrinter(
 
   try {
     await deps.send(ticket, printer);
-    logger.log(`Sent job ${job.id} to ${printer.name} (${printer.ipAddress}:${printer.port})`);
+    const target =
+      printer.connectionType === 'NETWORK' ? `${printer.ipAddress}:${printer.port}` : 'USB';
+    logger.log(`Sent job ${job.id} to ${printer.name} (${target})`);
     await reportStatus(deps, logger, job.id, 'SENT');
   } catch (err) {
     logger.warn(`Failed to send job ${job.id} to ${printer.name}: ${message(err)}`);
