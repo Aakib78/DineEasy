@@ -2,6 +2,7 @@ import { DineEasyApiClient, PrinterRecord } from './api-client';
 import { loadConfigFromEnv } from './config';
 import { consoleLogger, startPollLoop } from './poll-loop';
 import { sendToPrinter } from './printer-socket';
+import { sendToUsbPrinter } from './printer-usb';
 
 /**
  * Entry point for the standalone LAN print agent — see README.md for what this process is,
@@ -22,12 +23,17 @@ async function main(): Promise<void> {
   const stop = startPollLoop(
     {
       client,
+      // Dispatches purely on the printer's own `connectionType` — poll-loop.ts's `isPollable`
+      // already filtered to only fully-addressed NETWORK printers or any active USB printer,
+      // so both branches here can assume they have what they need.
       send: (ticket, printer: PrinterRecord) =>
-        sendToPrinter(ticket, {
-          host: printer.ipAddress as string,
-          port: printer.port as number,
-          timeoutMs: config.jobTimeoutMs,
-        }),
+        printer.connectionType === 'USB'
+          ? sendToUsbPrinter(ticket, { timeoutMs: config.jobTimeoutMs })
+          : sendToPrinter(ticket, {
+              host: printer.ipAddress as string,
+              port: printer.port as number,
+              timeoutMs: config.jobTimeoutMs,
+            }),
       logger: consoleLogger,
     },
     config.pollIntervalMs,
