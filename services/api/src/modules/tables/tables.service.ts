@@ -3,6 +3,7 @@ import { nanoid } from 'nanoid';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { NotFoundDomainError } from '../../common/errors/domain-errors';
 import { AuditLogService } from '../audit/audit-log.service';
+import { DiningSessionsService } from '../dining-sessions/dining-sessions.service';
 import { CreateFloorDto } from './dto/create-floor.dto';
 import { CreateTableDto } from './dto/create-table.dto';
 import { UpdateTableDto } from './dto/update-table.dto';
@@ -12,6 +13,7 @@ export class TablesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditLog: AuditLogService,
+    private readonly diningSessions: DiningSessionsService,
   ) {}
 
   // ---------------------------------------------------------------------
@@ -110,6 +112,18 @@ export class TablesService {
     return table;
   }
 
+  /**
+   * Setting `status: 'AVAILABLE'` used to just flip the column directly via the `updateMany`
+   * below — bypassing `DiningSessionsService.close()` entirely. That meant no
+   * financially-settled check (a table could be freed while an order was still unpaid), no
+   * `DiningSession.endedAt`, no `dining_session.closed` audit entry, and a guest rescanning that
+   * table's QR would silently rejoin the still-`OPEN` session
+   * (`findOrCreateOpenSession` matches on `status: 'OPEN'`) instead of starting a fresh one. This
+   * generic table-edit endpoint was, in practice, the only "close table" affordance either app
+   * exposed — routed through the real close workflow instead of a bare status write whenever
+   * there's actually an open session to close; `close()` throws (and this call fails with it,
+   * before any other field on `dto` is applied) if an order in that session isn't settled yet.
+   */
   async updateTable(
     organizationId: string,
     outletId: string,
@@ -119,7 +133,27 @@ export class TablesService {
   ) {
     const before = await this.getTableById(outletId, id);
 
-    await this.prisma.restaurantTable.updateMany({ where: { outletId, id }, data: dto });
+    const openSession = before.diningSessions[0];
+    const closingViaAvailable = dto.status === 'AVAILABLE' && Boolean(openSession);
+
+    if (closingViaAvailable) {
+      await this.diningSessions.close(organizationId, outletId, openSession.id, actorUserId);
+    }
+
+    // `close()` above already set the table to AVAILABLE — status is left out of this write in
+    // that case (Prisma treats an `undefined` field as "don't touch", same convention already
+    // used by every optional-field DTO in this codebase) so it isn't redundantly re-applied.
+    // Guarded against an empty `data` object (e.g. a PATCH that was *only* `{status:
+    // 'AVAILABLE'}` on a table that had a session to close) — Prisma's `updateMany` isn't meant
+    // to be called with nothing to set.
+    const remainingUpdate = closingViaAvailable ? { ...dto, status: undefined } : dto;
+    const hasRemainingFields = Object.values(remainingUpdate).some((v) => v !== undefined);
+    if (hasRemainingFields) {
+      await this.prisma.restaurantTable.updateMany({
+        where: { outletId, id },
+        data: remainingUpdate,
+      });
+    }
 
     const after = await this.getTableById(outletId, id);
 
