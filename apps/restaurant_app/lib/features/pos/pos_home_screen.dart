@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/realtime/realtime_providers.dart';
 import 'data/pos_models.dart';
 import 'order_builder_screen.dart';
 import 'state/pos_providers.dart';
@@ -20,6 +23,36 @@ class PosHomeScreen extends ConsumerStatefulWidget {
 
 class _PosHomeScreenState extends ConsumerState<PosHomeScreen> {
   String? _selectedFloorId;
+  StreamSubscription<void>? _orderRealtimeSub;
+  StreamSubscription<void>? _tableRealtimeSub;
+
+  @override
+  void initState() {
+    super.initState();
+    // This screen has no polling of its own — before this, it only ever refreshed on its own
+    // actions (place/serve an order) or an explicit pull-to-refresh, so another terminal
+    // placing a QR order, another staff member marking something served, or a table's
+    // occupancy changing elsewhere would sit stale here indefinitely. `order.updated` and
+    // `table.updated` (see core/realtime/realtime_service.dart) close that gap directly — this
+    // is also specifically what makes "Order open" clear live once an order is paid off
+    // elsewhere, rather than only after a manual pull-to-refresh (see docs/troubleshooting.md's
+    // "table.status and Order open are independent signals" entry for the underlying mechanic
+    // this is now keeping current automatically).
+    final realtime = ref.read(realtimeServiceProvider);
+    _orderRealtimeSub = realtime.orderUpdated.listen((_) {
+      if (mounted) ref.invalidate(activeOrdersProvider);
+    });
+    _tableRealtimeSub = realtime.tableUpdated.listen((_) {
+      if (mounted) ref.invalidate(tablesProvider);
+    });
+  }
+
+  @override
+  void dispose() {
+    _orderRealtimeSub?.cancel();
+    _tableRealtimeSub?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

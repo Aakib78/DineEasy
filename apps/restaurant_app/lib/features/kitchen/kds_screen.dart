@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/auth/auth_session.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/rbac/permissions.dart';
+import '../../core/realtime/realtime_providers.dart';
 import 'data/kds_models.dart';
 import 'state/kitchen_providers.dart';
 
@@ -24,14 +25,33 @@ class KdsScreen extends ConsumerStatefulWidget {
 
 class _KdsScreenState extends ConsumerState<KdsScreen> {
   Timer? _pollTimer;
+  StreamSubscription<void>? _queueRealtimeSub;
+  StreamSubscription<void>? _orderRealtimeSub;
 
   @override
   void initState() {
     super.initState();
-    // No WebSocket "refetch hint" wired up on the Flutter side yet (see kitchen_providers.dart's
-    // doc comment) — a fixed poll is the interim way a live board stays current. 6s keeps the
-    // board feeling live without hammering the LAN server from every terminal in the kitchen.
+    // Two layered signals, same reasoning as `home_shell.dart`'s notification badge: a
+    // `kitchen.queue_updated`/`order.updated` nudge from RealtimeGateway refreshes the board the
+    // moment another terminal sends items or an order gets cancelled outright (near-instant),
+    // and this poll is the backstop for whenever the socket hasn't connected (a captive portal,
+    // a proxy blocking WebSocket upgrades) — see core/realtime/realtime_service.dart's doc
+    // comment. Kept at 6s rather than lengthened, since a kitchen terminal is exactly the
+    // screen where "briefly stale" is most costly if the realtime path silently isn't working.
     _pollTimer = Timer.periodic(const Duration(seconds: 6), (_) {
+      if (mounted) ref.invalidate(kdsQueueProvider);
+    });
+
+    final realtime = ref.read(realtimeServiceProvider);
+    _queueRealtimeSub = realtime.kitchenQueueUpdated.listen((_) {
+      if (mounted) ref.invalidate(kdsQueueProvider);
+    });
+    // An order-level change (e.g. a whole order cancelled before any item started) can affect
+    // which tickets belong on this board without necessarily also firing kitchen.queue_updated
+    // (KitchenService only fires that one on a cancel — see its doc comment — but this board
+    // reads ticket data assembled from the order/kitchen-item join either way), so listen to
+    // both rather than assume one implies the other.
+    _orderRealtimeSub = realtime.orderUpdated.listen((_) {
       if (mounted) ref.invalidate(kdsQueueProvider);
     });
   }
@@ -39,6 +59,8 @@ class _KdsScreenState extends ConsumerState<KdsScreen> {
   @override
   void dispose() {
     _pollTimer?.cancel();
+    _queueRealtimeSub?.cancel();
+    _orderRealtimeSub?.cancel();
     super.dispose();
   }
 

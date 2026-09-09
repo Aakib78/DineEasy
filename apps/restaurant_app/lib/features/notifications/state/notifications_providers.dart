@@ -7,12 +7,13 @@ final notificationsRepositoryProvider = Provider<NotificationsRepository>(
   (ref) => NotificationsRepository(ref.watch(apiClientProvider)),
 );
 
-/// The bell icon's badge and `NotificationsScreen`'s list both watch this — no WebSocket wiring
-/// on the Flutter side yet (same gap as `kitchen_providers.dart`'s `kdsQueueProvider`, see that
-/// file's doc comment), so `HomeShell` force-refetches this on a `Timer.periodic` alongside
-/// every screen push/pop. 20s rather than KDS's 6s: an unread count is far less time-critical
-/// than a live kitchen board, and this poll runs continuously in the background across every
-/// tab, not just while one particular screen is open.
+/// The bell icon's badge and `NotificationsScreen`'s list both watch this. `HomeShell` keeps it
+/// current two ways layered together, same shape as `kitchen_providers.dart`'s `kdsQueueProvider`
+/// (see that file's doc comment): a near-instant nudge from `RealtimeGateway`'s
+/// `notification.created` event, plus an unconditional `Timer.periodic` backstop. 20s rather
+/// than KDS's 6s: an unread count is far less time-critical than a live kitchen board, and this
+/// poll runs continuously in the background across every tab, not just while one particular
+/// screen is open — it only exists at all for whenever the realtime path hasn't connected.
 final unreadNotificationCountProvider = FutureProvider.autoDispose<int>((ref) {
   return ref.watch(notificationsRepositoryProvider).unreadCount();
 });

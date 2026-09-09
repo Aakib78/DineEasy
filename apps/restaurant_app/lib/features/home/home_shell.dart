@@ -5,7 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/auth/access_token_claims.dart';
 import '../../core/auth/auth_session.dart';
+import '../../core/config/app_config.dart';
 import '../../core/rbac/permissions.dart';
+import '../../core/realtime/realtime_providers.dart';
 import '../billing/billing_screen.dart';
 import '../kitchen/kds_screen.dart';
 import '../notifications/notifications_screen.dart';
@@ -96,22 +98,48 @@ class HomeShell extends ConsumerStatefulWidget {
 class _HomeShellState extends ConsumerState<HomeShell> {
   int _selectedIndex = 0;
   Timer? _notificationPollTimer;
+  StreamSubscription<void>? _notificationRealtimeSub;
 
   @override
   void initState() {
     super.initState();
-    // Same interim-polling reasoning as `kds_screen.dart`'s ticket-board timer (see
-    // `unreadNotificationCountProvider`'s doc comment): no WebSocket wiring on the Flutter side
-    // yet, so the bell badge is kept current with a background poll for as long as the shell
-    // itself is alive, not just while the Notifications screen happens to be open.
+    // The bell badge has two independent ways of staying current, deliberately layered rather
+    // than either alone: a `notification.created` nudge from RealtimeGateway (near-instant,
+    // see core/realtime/realtime_service.dart) plus this poll as a backstop for whenever the
+    // socket hasn't connected yet or ever (captive portal, a proxy blocking WebSocket upgrades).
+    // 20s is generous specifically because the realtime path is expected to be doing the real
+    // work most of the time now — see `unreadNotificationCountProvider`'s doc comment.
     _notificationPollTimer = Timer.periodic(const Duration(seconds: 20), (_) {
       if (mounted) ref.invalidate(unreadNotificationCountProvider);
     });
+
+    // HomeShell is only ever mounted once the router has redirected an authenticated user here
+    // (see app_router.dart) and unmounted the moment that stops being true, so its init/dispose
+    // is exactly the right lifecycle to open/close the one shared realtime socket for this
+    // session — individual feature screens (POS, Kitchen) just subscribe to it, never manage
+    // its connection themselves.
+    unawaited(_connectRealtime());
+    _notificationRealtimeSub = ref.read(realtimeServiceProvider).notificationCreated.listen((_) {
+      if (mounted) ref.invalidate(unreadNotificationCountProvider);
+    });
+  }
+
+  Future<void> _connectRealtime() async {
+    final tokens = await ref.read(tokenStorageProvider).read();
+    if (tokens == null || !mounted) return;
+    ref
+        .read(realtimeServiceProvider)
+        .connect(apiBaseUrl: AppConfig.apiBaseUrl, accessToken: tokens.accessToken);
   }
 
   @override
   void dispose() {
     _notificationPollTimer?.cancel();
+    _notificationRealtimeSub?.cancel();
+    // An authenticated socket must not outlive the session that opened it — HomeShell unmounting
+    // means the router has already decided the user is signed out (see the class doc comment
+    // above), so this is the right moment to close it rather than waiting on garbage collection.
+    ref.read(realtimeServiceProvider).disconnect();
     super.dispose();
   }
 

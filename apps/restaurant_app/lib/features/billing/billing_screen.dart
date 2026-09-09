@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/money/money.dart';
+import '../../core/realtime/realtime_providers.dart';
 import '../pos/data/pos_models.dart';
 import '../pos/state/pos_providers.dart';
 import 'billing_detail_screen.dart';
@@ -13,13 +16,40 @@ import 'billing_detail_screen.dart';
 /// endpoint — `GET /orders` already excludes COMPLETED/CANCELLED/REFUNDED, so filtering
 /// client-side to these three statuses is enough; there's no dedicated "orders to bill"
 /// endpoint on the backend.
-class BillingScreen extends ConsumerWidget {
+class BillingScreen extends ConsumerStatefulWidget {
   const BillingScreen({super.key});
 
+  @override
+  ConsumerState<BillingScreen> createState() => _BillingScreenState();
+}
+
+class _BillingScreenState extends ConsumerState<BillingScreen> {
   static const _billableStatuses = {OrderStatus.served, OrderStatus.billed, OrderStatus.paid};
 
+  StreamSubscription<void>? _orderRealtimeSub;
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  void initState() {
+    super.initState();
+    // This board used to only ever refresh on pull-to-refresh or navigating back from a detail
+    // screen — a split payment recorded on a different tablet, or the kitchen/waiter path
+    // getting an order to SERVED, wouldn't show up here until someone happened to pull down.
+    // `order.updated` covers both now (`PaymentsService.recordPayment` emits it for every
+    // payment, not just ones that fully settle the order — see its doc comment — so a partial
+    // payment recorded elsewhere updates "paid so far" here live too).
+    _orderRealtimeSub = ref.read(realtimeServiceProvider).orderUpdated.listen((_) {
+      if (mounted) ref.invalidate(activeOrdersProvider);
+    });
+  }
+
+  @override
+  void dispose() {
+    _orderRealtimeSub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final ordersAsync = ref.watch(activeOrdersProvider);
 
     return Scaffold(

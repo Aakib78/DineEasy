@@ -19,11 +19,12 @@ final kitchenStationsProvider = FutureProvider.autoDispose<List<KitchenStation>>
 final selectedKitchenStationIdProvider = StateProvider.autoDispose<String?>((ref) => null);
 
 /// Re-evaluates whenever the station filter changes (Riverpod's normal `ref.watch` dependency
-/// tracking) *and* is force-refetched on a fixed interval by `KdsScreen` (`ref.invalidate`,
-/// driven by a `Timer.periodic`) — this project has no WebSocket wiring on the Flutter side yet
-/// (unlike the customer PWA's `useOrderUpdates.ts`), so short-interval polling is the interim
-/// mechanism for keeping a live kitchen board current. See docs/flutter-app.md for why that
-/// gap is being accepted for now rather than adding `socket_io_client` in this same slice.
+/// tracking) and is also force-refetched by `KdsScreen`, two ways layered together: a
+/// `Timer.periodic` poll (unconditional backstop) plus a near-instant nudge from
+/// `RealtimeGateway`'s `kitchen.queue_updated`/`order.updated` events via
+/// `core/realtime/realtime_service.dart` — the same "hint on top of a working poll, never a
+/// replacement for one" shape as the customer PWA's `useOrderUpdates.ts`. See `KdsScreen`'s
+/// `initState` for exactly which events it subscribes to and why both.
 final kdsQueueProvider = FutureProvider.autoDispose<List<KdsTicket>>((ref) {
   final stationId = ref.watch(selectedKitchenStationIdProvider);
   return ref.watch(kitchenRepositoryProvider).listQueue(stationId: stationId);

@@ -7,6 +7,7 @@ import { TenantContextStore } from '../../common/context/tenant-context';
 import { NotFoundDomainError, ValidationDomainError } from '../../common/errors/domain-errors';
 import { AuditLogService } from '../audit/audit-log.service';
 import { OrdersService } from '../orders/orders.service';
+import { RealtimeGateway } from '../../common/realtime/realtime.gateway';
 import { RecordPaymentDto } from './dto/record-payment.dto';
 import { InitiateRefundDto } from './dto/initiate-refund.dto';
 import { ProviderWebhookDto } from './dto/provider-webhook.dto';
@@ -30,6 +31,7 @@ export class PaymentsService {
     private readonly prisma: PrismaService,
     private readonly auditLog: AuditLogService,
     private readonly ordersService: OrdersService,
+    private readonly realtime: RealtimeGateway,
   ) {}
 
   async recordPayment(
@@ -97,6 +99,15 @@ export class PaymentsService {
       entityId: payment.id,
       newState: { method: dto.method, amount: amount.toString() },
     });
+
+    // `transitionStatus` already emits `order.updated` for a payment that fully settles the
+    // order (PAID/COMPLETED below), but a *partial* payment — one leg of a split bill — never
+    // passes through that choke point at all, so without this, anyone else watching this
+    // order's Billing screen (the "paid so far" figure, remaining balance) wouldn't see it
+    // change until the order was eventually fully paid. Harmless to also fire it in the fully-
+    // settling case below — a duplicate hint just costs one wasted refetch, never correctness
+    // (see RealtimeGateway's doc comment).
+    this.realtime.orderUpdated(outletId, orderId, order.diningSessionId);
 
     if (evaluation.fullySettlesOrder) {
       await this.settleOrder(organizationId, outletId, orderId, actorUserId);
