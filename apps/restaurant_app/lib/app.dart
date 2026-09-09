@@ -60,7 +60,7 @@ ThemeData _buildTheme(Brightness brightness) {
     // A colored app bar (rather than M3's default muted-surface one) is the single biggest
     // driver of "punchy" — it's on every screen in the shell (see home_shell.dart) and reads
     // instantly as branded rather than generic Material.
-    appBarTheme: AppBarTheme(
+    appBarTheme: AppBarThemeData(
       backgroundColor: colorScheme.primary,
       foregroundColor: colorScheme.onPrimary,
       elevation: 0,
@@ -110,14 +110,14 @@ ThemeData _buildTheme(Brightness brightness) {
       ),
     ),
 
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       elevation: 0,
       color: colorScheme.surfaceContainerHigh,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       margin: EdgeInsets.zero,
     ),
 
-    inputDecorationTheme: InputDecorationTheme(
+    inputDecorationTheme: InputDecorationThemeData(
       filled: true,
       fillColor: colorScheme.surfaceContainerHighest,
       border: OutlineInputBorder(
@@ -175,7 +175,7 @@ ThemeData _buildTheme(Brightness brightness) {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
     ),
 
-    tabBarTheme: TabBarTheme(
+    tabBarTheme: TabBarThemeData(
       labelColor: colorScheme.primary,
       unselectedLabelColor: colorScheme.onSurfaceVariant,
       indicatorColor: colorScheme.primary,
