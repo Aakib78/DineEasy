@@ -5,6 +5,7 @@ import { AuditLogService } from '../audit/audit-log.service';
 import { OrdersService } from '../orders/orders.service';
 import { RealtimeGateway } from '../../common/realtime/realtime.gateway';
 import { CreateKitchenStationDto } from './dto/create-station.dto';
+import { UpdateKitchenStationDto } from './dto/update-station.dto';
 import { UpdateKitchenItemStatusDto } from './dto/update-kitchen-item-status.dto';
 import {
   KitchenItemStatus,
@@ -181,10 +182,44 @@ export class KitchenService {
     return station;
   }
 
-  async listStations(outletId: string) {
+  // `includeInactive` defaults off — see the identical comment on ModifiersController.list for
+  // why this is opt-in rather than a behavior change for the pre-existing (KDS filter-chip)
+  // caller.
+  async listStations(outletId: string, includeInactive = false) {
     return this.prisma.kitchenStation.findMany({
-      where: { outletId, isActive: true },
+      where: { outletId, ...(includeInactive ? {} : { isActive: true }) },
       orderBy: { name: 'asc' },
     });
+  }
+
+  /** Was a real gap: `KitchenStation` had no update/delete endpoint at all — a misnamed or
+   * discontinued station had no fix short of a direct database edit. See
+   * `UpdateKitchenStationDto`'s doc comment on what deactivating one does (and doesn't yet) do. */
+  async updateStation(
+    organizationId: string,
+    outletId: string,
+    id: string,
+    dto: UpdateKitchenStationDto,
+    actorUserId: string,
+  ) {
+    const before = await this.prisma.kitchenStation.findFirst({ where: { outletId, id } });
+    if (!before) throw new NotFoundDomainError('KitchenStation', id);
+
+    await this.prisma.kitchenStation.updateMany({ where: { outletId, id }, data: dto });
+
+    const after = await this.prisma.kitchenStation.findFirst({ where: { outletId, id } });
+
+    await this.auditLog.record({
+      organizationId,
+      outletId,
+      actorUserId,
+      action: 'kitchen_station.updated',
+      entityType: 'KitchenStation',
+      entityId: id,
+      previousState: before,
+      newState: after,
+    });
+
+    return after;
   }
 }

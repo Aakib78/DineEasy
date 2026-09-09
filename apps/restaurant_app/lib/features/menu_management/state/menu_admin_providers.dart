@@ -25,12 +25,30 @@ final menuTreeProvider = FutureProvider.autoDispose<List<MenuCategoryAdmin>>((re
   return ref.watch(menuAdminRepositoryProvider).getFullTree();
 });
 
+/// Active-only — used by `ItemEditScreen`'s modifier-group picker, where an inactive group
+/// shouldn't be offered as a new attachment (an already-attached-but-now-inactive one is still
+/// shown there, via a separate union computed client-side — see `_ModifierGroupPicker`).
 final modifierGroupsListProvider = FutureProvider.autoDispose<List<ModifierGroupAdmin>>((ref) {
   return ref.watch(modifierGroupsRepositoryProvider).list();
 });
 
+/// Active-only — used by `ItemEditScreen`'s tax-group dropdown, where (unlike the modifier-group
+/// picker above) there's no extra filter keeping an inactive one from being newly assignable, so
+/// the exclusion has to happen here instead.
 final taxGroupsListProvider = FutureProvider.autoDispose<List<TaxGroup>>((ref) {
   return ref.watch(taxGroupsRepositoryProvider).list();
+});
+
+/// Active + inactive — backs the standalone `ModifierGroupsScreen`, distinct from
+/// [modifierGroupsListProvider] above so deactivating a group there doesn't make it vanish from
+/// the one screen that could reactivate it.
+final modifierGroupsAdminProvider = FutureProvider.autoDispose<List<ModifierGroupAdmin>>((ref) {
+  return ref.watch(modifierGroupsRepositoryProvider).list(includeInactive: true);
+});
+
+/// Active + inactive — same reasoning as [modifierGroupsAdminProvider], backing `TaxGroupsScreen`.
+final taxGroupsAdminProvider = FutureProvider.autoDispose<List<TaxGroup>>((ref) {
+  return ref.watch(taxGroupsRepositoryProvider).list(includeInactive: true);
 });
 
 /// One item, fetched fresh — used by `ItemEditScreen` so it always reflects the latest

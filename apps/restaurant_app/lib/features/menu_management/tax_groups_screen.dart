@@ -14,6 +14,10 @@ import 'state/menu_admin_providers.dart';
 /// asymmetry (`TaxController.create`/`update` both require `SETTINGS_MANAGE`; list/get require
 /// no permission beyond being signed in). A Manager who can edit the rest of the menu still
 /// can't touch tax groups; only Owner can here.
+///
+/// Uses [taxGroupsAdminProvider] (active + inactive), not [taxGroupsListProvider] — the latter
+/// is active-only and feeds `ItemEditScreen`'s tax-group dropdown; this screen needs to show a
+/// deactivated group too, since it's the only place staff could ever reactivate one.
 class TaxGroupsScreen extends ConsumerWidget {
   const TaxGroupsScreen({super.key});
 
@@ -21,7 +25,7 @@ class TaxGroupsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(currentUserProvider);
     final canEdit = user?.hasPermission(Permissions.settingsManage) ?? false;
-    final groupsAsync = ref.watch(taxGroupsListProvider);
+    final groupsAsync = ref.watch(taxGroupsAdminProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Tax groups')),
@@ -38,8 +42,8 @@ class TaxGroupsScreen extends ConsumerWidget {
           : null,
       body: RefreshIndicator(
         onRefresh: () async {
-          ref.invalidate(taxGroupsListProvider);
-          await ref.read(taxGroupsListProvider.future);
+          ref.invalidate(taxGroupsAdminProvider);
+          await ref.read(taxGroupsAdminProvider.future);
         },
         child: groupsAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
@@ -244,6 +248,7 @@ class _CreateTaxGroupSheetState extends ConsumerState<_CreateTaxGroupSheet> {
     try {
       await ref.read(taxGroupsRepositoryProvider).create(name: name, components: components);
       ref.invalidate(taxGroupsListProvider);
+      ref.invalidate(taxGroupsAdminProvider);
       if (!mounted) return;
       Navigator.pop(context);
     } catch (e) {
@@ -346,6 +351,7 @@ class _EditTaxGroupSheetState extends ConsumerState<_EditTaxGroupSheet> {
           .read(taxGroupsRepositoryProvider)
           .update(widget.existing.id, name: name, isActive: _isActive);
       ref.invalidate(taxGroupsListProvider);
+      ref.invalidate(taxGroupsAdminProvider);
       if (!mounted) return;
       Navigator.pop(context);
     } catch (e) {

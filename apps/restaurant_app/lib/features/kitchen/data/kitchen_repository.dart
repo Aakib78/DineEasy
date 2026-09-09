@@ -23,12 +23,38 @@ class KitchenRepository {
     }
   }
 
-  Future<List<KitchenStation>> listStations() async {
+  /// `includeInactive` defaults off, matching the backend's own default — the KDS filter-chip
+  /// list (this method's original caller) only ever wants active stations; pass `true` from an
+  /// admin screen that also needs to show (and let staff reactivate) a deactivated one.
+  Future<List<KitchenStation>> listStations({bool includeInactive = false}) async {
     try {
-      final response = await _apiClient.dio.get<List<dynamic>>('/kitchen/stations');
+      final response = await _apiClient.dio.get<List<dynamic>>(
+        '/kitchen/stations',
+        queryParameters: includeInactive ? {'includeInactive': 'true'} : null,
+      );
       return (response.data ?? const [])
           .map((s) => KitchenStation.fromJson(s as Map<String, dynamic>))
           .toList();
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  Future<void> createStation(String name) async {
+    try {
+      await _apiClient.dio.post<void>('/kitchen/stations', data: {'name': name});
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// Was a real gap — `KitchenStation` had no update/delete endpoint at all until now.
+  Future<void> updateStation(String id, {String? name, bool? isActive}) async {
+    try {
+      await _apiClient.dio.patch<void>(
+        '/kitchen/stations/$id',
+        data: {if (name != null) 'name': name, if (isActive != null) 'isActive': isActive},
+      );
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
     }

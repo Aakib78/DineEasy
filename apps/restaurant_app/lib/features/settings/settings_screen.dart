@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/auth/auth_session.dart';
 import '../../core/rbac/permissions.dart';
 import '../audit/audit_log_screen.dart';
+import '../kitchen/kitchen_stations_screen.dart';
 import '../menu_management/menu_management_screen.dart';
 import '../organization/organization_settings_screen.dart';
 import '../printers/printers_screen.dart';
@@ -23,6 +24,7 @@ class SettingsScreen extends ConsumerWidget {
     final user = ref.watch(currentUserProvider);
     final canManagePrinters = user?.hasPermission(Permissions.printersManage) ?? false;
     final canViewMenu = user?.hasPermission(Permissions.menuView) ?? false;
+    final canViewKitchenStations = user?.hasPermission(Permissions.kitchenView) ?? false;
     final canViewAudit = user?.hasPermission(Permissions.auditView) ?? false;
 
     return ListView(
@@ -82,6 +84,26 @@ class SettingsScreen extends ConsumerWidget {
             leading: Icon(Icons.restaurant_menu_outlined),
             title: Text('Menu'),
             subtitle: Text('Ask an Owner or Manager for menu access'),
+            enabled: false,
+          ),
+        const Divider(height: 1),
+        // POST /kitchen/stations existed with zero UI callers — GET was only ever consumed by
+        // the KDS filter chips (kds_screen.dart).
+        if (canViewKitchenStations)
+          ListTile(
+            leading: const Icon(Icons.soup_kitchen_outlined),
+            title: const Text('Kitchen stations'),
+            subtitle: const Text('Manual filters for the kitchen display queue'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute<void>(builder: (_) => const KitchenStationsScreen())),
+          )
+        else
+          const ListTile(
+            leading: Icon(Icons.soup_kitchen_outlined),
+            title: Text('Kitchen stations'),
+            subtitle: Text('Ask an Owner or Manager for access'),
             enabled: false,
           ),
         const Divider(height: 1),

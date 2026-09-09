@@ -10,6 +10,10 @@ import 'state/menu_admin_providers.dart';
 /// Lists every `ModifierGroup` for the outlet (outlet-scoped and reusable across items — see
 /// docs/database.md "Why a reusable ModifierGroup"). Reached from the tune icon on
 /// `MenuManagementScreen`. `menu.edit`-gated for create/edit, same view/edit split as that screen.
+///
+/// Uses [modifierGroupsAdminProvider] (active + inactive), not [modifierGroupsListProvider] —
+/// the latter is active-only and feeds `ItemEditScreen`'s attach picker; this screen needs to
+/// show a deactivated group too, since it's the only place staff could ever reactivate one.
 class ModifierGroupsScreen extends ConsumerWidget {
   const ModifierGroupsScreen({super.key});
 
@@ -17,7 +21,7 @@ class ModifierGroupsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(currentUserProvider);
     final canEdit = user?.hasPermission(Permissions.menuEdit) ?? false;
-    final groupsAsync = ref.watch(modifierGroupsListProvider);
+    final groupsAsync = ref.watch(modifierGroupsAdminProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Modifier groups')),
@@ -34,8 +38,8 @@ class ModifierGroupsScreen extends ConsumerWidget {
           : null,
       body: RefreshIndicator(
         onRefresh: () async {
-          ref.invalidate(modifierGroupsListProvider);
-          await ref.read(modifierGroupsListProvider.future);
+          ref.invalidate(modifierGroupsAdminProvider);
+          await ref.read(modifierGroupsAdminProvider.future);
         },
         child: groupsAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
@@ -283,6 +287,7 @@ class _CreateGroupSheetState extends ConsumerState<_CreateGroupSheet> {
             modifiers: modifiers,
           );
       ref.invalidate(modifierGroupsListProvider);
+      ref.invalidate(modifierGroupsAdminProvider);
       if (!mounted) return;
       Navigator.pop(context);
     } catch (e) {

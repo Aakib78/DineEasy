@@ -18,9 +18,14 @@ class TaxGroupsRepository {
 
   final ApiClient _apiClient;
 
-  Future<List<TaxGroup>> list() async {
+  /// `includeInactive` defaults off, matching the backend's own default — see the identical
+  /// comment on `ModifierGroupsRepository.list` for why this is opt-in.
+  Future<List<TaxGroup>> list({bool includeInactive = false}) async {
     try {
-      final response = await _apiClient.dio.get<List<dynamic>>('/tax-groups');
+      final response = await _apiClient.dio.get<List<dynamic>>(
+        '/tax-groups',
+        queryParameters: includeInactive ? {'includeInactive': 'true'} : null,
+      );
       return (response.data ?? const [])
           .map((g) => TaxGroup.fromJson(g as Map<String, dynamic>))
           .toList();
