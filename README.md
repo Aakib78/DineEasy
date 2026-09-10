@@ -32,8 +32,12 @@ git clone git@github.com-personal:Aakib78/DineEasy.git
 cd DineEasy
 cp .env.example .env
 
-# Start Postgres + Redis (and, once built, the API + web) via Docker
-npm run docker:up
+# Start Postgres + Redis via Docker (the API + web apps below run on the host, not in Docker,
+# for fast rebuilds — see docs/local-development.md step 2 for why this is scoped to just these
+# two services rather than the plain `docker:up`, which brings up the *whole* stack including
+# dockerized api/web/pos and will fight the host dev:api/dev:web/dev:pos processes below for the
+# same ports)
+npm run docker:up:infra
 
 # Install dependencies
 npm install
@@ -55,11 +59,18 @@ npm run dev:pos
 ```
 
 Once the three `.env.local`/`.env` files above are in place, `npm run dev:all` replaces those last
-three separate commands (and the terminals they each need) with one: it brings up Docker, then
-runs the API + both web apps together in a single terminal, labeled and color-coded. `npm run
-stop:all` stops all of it (Node dev servers + Postgres/Redis containers) from any terminal, even
-one that didn't start them — handy if you closed the `dev:all` terminal without Ctrl+C. See
-`docs/local-development.md`'s "Start/stop everything at once" section for detail.
+three separate commands (and the terminals they each need) with one: it brings up Postgres +
+Redis (`docker:up:infra`, same as the quick-start command above — **not** the full `docker:up`),
+then runs the API + both web apps together in a single terminal, labeled and color-coded. To stop
+it, either Ctrl+C in that terminal (stops the three Node processes, leaves Postgres/Redis up), or
+run `npm run stop:all` from any terminal — even one that didn't start them, handy if you closed
+the `dev:all` terminal without Ctrl+C — which stops the Node processes *and* the Postgres/Redis
+containers in one go. Avoid running the plain `docker:up`/`docker:prod` at the same time as
+`dev:all`/`dev:api`/`dev:web`/`dev:pos` — those bring up dockerized `api`/`web`/`pos` containers
+bound to the same host ports (3000/3001/5173) the host processes use, which fails with
+`EADDRINUSE`; if that happens, `docker ps` will show the extra containers and `docker stop`/`rm`
+them (or `npm run docker:down`) before retrying. See `docs/local-development.md`'s "Start/stop
+everything at once" section and `docs/troubleshooting.md` for detail.
 
 Then run the Flutter app (first time only, generates the platform folders — see `docs/flutter-app.md`):
 
