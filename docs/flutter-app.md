@@ -385,6 +385,27 @@ Kitchen/KDS, Billing, Reports) builds on top of, not those features themselves:
   verified in this environment — no Flutter/Dart SDK here; the backend addition was verified with
   `tsc --noEmit` (unchanged) and eslint (clean).
 
+- **Order accept / cancel-item / cancel-order** (`OrderBuilderScreen`'s `_ExistingOrderBanner`,
+  now stateful and holding the order it's showing so an accept/cancel response can update it in
+  place; three new `OrdersRepository` methods): `POST /orders/:id/accept`,
+  `POST /orders/:id/items/:itemId/cancel`, and `POST /orders/:id/cancel` had real backend logic
+  (RBAC-gated, validated against `order-state-machine.ts`) with no UI caller at all — a
+  mis-entered order or a wrong item couldn't be undone from this app. "Accept" appears only while
+  `OrderStatus.placed` (`orders.update`-gated, same permission "Mark served" already used); each
+  active line item gets an inline "Cancel" once the order isn't `billed`+settled (mirrors
+  `OrdersService.cancelItem`'s `itemsLockedFrom` guard: `billed`, `paid`, `completed`,
+  `cancelled`, `refunded`); "Cancel this order" appears for any pre-payment status
+  (`orders.cancel`-gated — Owner/Manager only, Waiter/Cashier can update but not void) and opens
+  an inline reason field + confirm step rather than acting on the first tap, since voiding a whole
+  order can't be undone. Backend gained one doc comment (`OrdersService.acceptOrder` had none):
+  every order already has a KOT in the kitchen queue the moment it's `PLACED`, and
+  `KitchenService.advanceOrderTo` auto-walks a still-`PLACED` order through `ACCEPTED` the instant
+  the kitchen starts any item — so `accept` is a front-of-house acknowledgment, not a kitchen
+  gate, most meaningful for a QR guest order nobody's looked at yet. Mirrors the identical
+  addition to `apps/pos_web/src/features/order/OrderScreen.tsx`. No schema change. Not yet
+  verified in this environment — no Flutter/Dart SDK here; the backend doc-comment-only change
+  was verified with `tsc --noEmit` (unchanged) and eslint (clean).
+
 **Not built yet**: offline/local-cache behavior (tracked with the LAN/offline backend slice —
 docs/offline-mode.md), real OS-level push/local notifications (the in-app inbox above is the
 step before that — it's a poll-driven bell, not a system notification), and the

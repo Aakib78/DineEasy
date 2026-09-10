@@ -142,4 +142,52 @@ class OrdersRepository {
       throw ApiException.fromDioException(e);
     }
   }
+
+  /// PLACED -> ACCEPTED (backend: `POST /orders/:id/accept`, `orders.update`) — front-of-house
+  /// acknowledgment that a newly placed order (staff- or QR-guest-sourced) has been seen and is
+  /// legitimate. Every order already has a KOT and sits in the kitchen queue the moment it's
+  /// PLACED, so this doesn't gate the kitchen seeing it; it's most meaningful for a QR order
+  /// nobody at the restaurant has looked at yet. Also happens implicitly the moment the kitchen
+  /// starts any item on a still-PLACED order — see `OrdersService.acceptOrder`'s doc comment on
+  /// the backend for the full detail — so calling this explicitly only matters for an order
+  /// nobody's started cooking yet.
+  Future<Order> accept(String orderId) async {
+    try {
+      final response = await _apiClient.dio.post<Map<String, dynamic>>('/orders/$orderId/accept');
+      return Order.fromJson(response.data!);
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// `orders.cancel`-gated (Owner/Manager only — Waiter/Cashier can build and update an order
+  /// but not void one). Blocked once the order is BILLED+settled (the bill already reflects the
+  /// item) — see `OrdersService.cancelItem`'s doc comment for why that's a stricter cutoff than
+  /// [cancel] below. Returns the full, re-fetched order.
+  Future<Order> cancelItem(String orderId, String itemId) async {
+    try {
+      final response = await _apiClient.dio.post<Map<String, dynamic>>(
+        '/orders/$orderId/items/$itemId/cancel',
+      );
+      return Order.fromJson(response.data!);
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// `orders.cancel`-gated. Legal from any pre-payment status (CANCELLED is reachable from
+  /// everything except PAID/COMPLETED, which can only be REFUNDED once money has moved — see
+  /// `order-state-machine.ts` on the backend); the backend 400s otherwise. `reason` is optional
+  /// and only for the audit trail.
+  Future<Order> cancel(String orderId, {String? reason}) async {
+    try {
+      final response = await _apiClient.dio.post<Map<String, dynamic>>(
+        '/orders/$orderId/cancel',
+        data: reason != null && reason.isNotEmpty ? {'reason': reason} : null,
+      );
+      return Order.fromJson(response.data!);
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
 }
