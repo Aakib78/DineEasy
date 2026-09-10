@@ -142,10 +142,11 @@ export class BillingService {
     });
 
     const result = await this.getById(organizationId, invoice.id);
+    const outlet = await this.prisma.outlet.findFirst({ where: { id: outletId, organizationId } });
     await this.printersService.enqueueForType(
       outletId,
       'RECEIPT',
-      this.buildReceiptPayload(order.orderNumber, result),
+      this.buildReceiptPayload(order.orderNumber, result, outlet),
     );
 
     return result;
@@ -170,11 +171,16 @@ export class BillingService {
       invoice.outletId,
       invoice.orderId,
     );
+    // Scoped by the invoice's own outlet, same reasoning as the doc comment above — not the
+    // caller's active outlet.
+    const outlet = await this.prisma.outlet.findFirst({
+      where: { id: invoice.outletId, organizationId },
+    });
 
     await this.printersService.enqueueForType(
       invoice.outletId,
       'RECEIPT',
-      this.buildReceiptPayload(order.orderNumber, invoice),
+      this.buildReceiptPayload(order.orderNumber, invoice, outlet),
     );
 
     await this.auditLog.record({
@@ -213,6 +219,13 @@ export class BillingService {
    * `buildReceiptTicket`) — shared between the automatic print-on-generate above and the
    * explicit `printInvoice` reprint so the two can never drift into producing different-looking
    * tickets for the same invoice.
+   *
+   * `outlet` is nullable and every field on it it optional on the schema — this deliberately
+   * degrades to the pre-existing payload shape (no outlet fields at all) rather than throwing,
+   * both callers already re-fetch the outlet in a separate query rather than trust anything
+   * cached, and a still-legal-but-incomplete `Outlet` row (name set, GSTIN never filled in) must
+   * still produce a printable ticket, just without that one line — see `escpos.ts`'s
+   * `ReceiptTicketPayload` doc comment for how the print agent renders an absent field.
    */
   private buildReceiptPayload(
     orderNumber: string,
@@ -227,6 +240,17 @@ export class BillingService {
       }[];
       total: { toString(): string };
     },
+    outlet: {
+      name: string;
+      phone: string | null;
+      addressLine1: string | null;
+      addressLine2: string | null;
+      city: string | null;
+      state: string | null;
+      pincode: string | null;
+      gstin: string | null;
+      fssaiLicense: string | null;
+    } | null,
   ): Record<string, unknown> {
     return {
       invoiceNumber: invoice.invoiceNumber,
@@ -243,6 +267,32 @@ export class BillingService {
         taxAmount: t.taxAmount.toString(),
       })),
       total: invoice.total.toString(),
+      outletName: outlet?.name,
+      outletAddress: outlet ? this.composeAddress(outlet) : undefined,
+      outletPhone: outlet?.phone,
+      gstin: outlet?.gstin,
+      fssaiLicense: outlet?.fssaiLicense,
     };
+  }
+
+  /** Joins whichever of `Outlet`'s address fields are actually set (all optional on the schema)
+   * into one printable line — `null`/empty pieces are dropped rather than leaving stray ", ,"
+   * gaps, and the whole thing is `undefined` (not an empty string) when nothing is set, so
+   * `escpos.ts`'s "omit the line entirely when absent" rendering applies cleanly. */
+  private composeAddress(outlet: {
+    addressLine1: string | null;
+    addressLine2: string | null;
+    city: string | null;
+    state: string | null;
+    pincode: string | null;
+  }): string | undefined {
+    const parts = [
+      outlet.addressLine1,
+      outlet.addressLine2,
+      outlet.city,
+      outlet.state,
+      outlet.pincode,
+    ].filter((p): p is string => Boolean(p && p.trim()));
+    return parts.length > 0 ? parts.join(', ') : undefined;
   }
 }

@@ -134,6 +134,19 @@ export interface ReceiptTicketPayload {
   subtotal: string;
   taxes: ReceiptTicketTax[];
   total: string;
+  /** Restaurant identity for the ticket header (spec §16: a GST-compliant bill names the
+   * business, not just the order). All optional and all independently omittable — a job
+   * enqueued before this header existed (queued in the DB, not yet SENT when this agent build
+   * rolled out) carries none of these fields, and `coerceReceiptPayload` below must render a
+   * sane ticket without them rather than throwing on payload from before this field existed. */
+  outletName?: string | null;
+  /** Pre-composed single line — `BillingService` joins whichever of address/city/state/pincode
+   * the outlet actually has set (all optional on `Outlet`) rather than this file guessing which
+   * pieces are present. */
+  outletAddress?: string | null;
+  outletPhone?: string | null;
+  gstin?: string | null;
+  fssaiLicense?: string | null;
 }
 
 /** ESC/POS-safe money rendering — see the file doc comment for why this is "Rs." not "₹". */
@@ -147,8 +160,22 @@ export function buildReceiptTicket(
   now: Date = new Date(),
 ): Buffer {
   const parts: Buffer[] = [INIT, ALIGN_CENTER, BOLD_ON];
-  parts.push(line('RECEIPT'));
-  parts.push(BOLD_OFF, ALIGN_LEFT);
+  // The outlet's own name is the ticket's real headline when it's known — falls back to the
+  // generic "RECEIPT" title exactly as before for a payload with no outlet fields at all (an
+  // older queued job, or this agent talking to an API version that predates this header).
+  parts.push(line(payload.outletName || 'RECEIPT'));
+  parts.push(BOLD_OFF);
+  if (payload.outletAddress) parts.push(line(payload.outletAddress));
+  if (payload.outletPhone) parts.push(line(`Ph: ${payload.outletPhone}`));
+  const regLine = [
+    payload.gstin ? `GSTIN: ${payload.gstin}` : null,
+    payload.fssaiLicense ? `FSSAI: ${payload.fssaiLicense}` : null,
+  ]
+    .filter((v): v is string => v !== null)
+    .join('  ');
+  if (regLine) parts.push(line(regLine));
+  parts.push(ALIGN_LEFT);
+  parts.push(rule(width));
   parts.push(
     line(twoColumn(`Invoice #${payload.invoiceNumber}`, `Order #${payload.orderNumber}`, width)),
   );
@@ -260,5 +287,12 @@ function coerceReceiptPayload(p: Record<string, unknown>): ReceiptTicketPayload 
         })
       : [],
     total: String(p.total ?? '0'),
+    // All optional — see the interface's doc comment on why a payload predating this header
+    // must coerce cleanly with none of these present, not throw.
+    outletName: typeof p.outletName === 'string' ? p.outletName : null,
+    outletAddress: typeof p.outletAddress === 'string' ? p.outletAddress : null,
+    outletPhone: typeof p.outletPhone === 'string' ? p.outletPhone : null,
+    gstin: typeof p.gstin === 'string' ? p.gstin : null,
+    fssaiLicense: typeof p.fssaiLicense === 'string' ? p.fssaiLicense : null,
   };
 }

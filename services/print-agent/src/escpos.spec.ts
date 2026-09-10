@@ -123,6 +123,43 @@ describe('buildReceiptTicket', () => {
     expect(text).toContain('Subtotal');
     expect(text).toContain('TOTAL');
   });
+
+  it('falls back to the generic "RECEIPT" title when no outlet fields are present (a payload predating the header, or one from an API version that never sets them)', () => {
+    const text = buildReceiptTicket(basePayload, 42, new Date()).toString('ascii');
+    expect(text).toContain('RECEIPT');
+  });
+
+  it('headlines with the outlet name instead of "RECEIPT" once it is known, and renders the address/phone/GSTIN/FSSAI lines', () => {
+    const text = buildReceiptTicket(
+      {
+        ...basePayload,
+        outletName: 'Spice Route',
+        outletAddress: '12 MG Road, Bengaluru, Karnataka 560001',
+        outletPhone: '9876543210',
+        gstin: '29ABCDE1234F1Z5',
+        fssaiLicense: '10012345006789',
+      },
+      42,
+      new Date(),
+    ).toString('ascii');
+    expect(text).toContain('Spice Route');
+    expect(text).toContain('12 MG Road, Bengaluru, Karnataka 560001');
+    expect(text).toContain('Ph: 9876543210');
+    expect(text).toContain('GSTIN: 29ABCDE1234F1Z5');
+    expect(text).toContain('FSSAI: 10012345006789');
+  });
+
+  it('omits whichever outlet fields are missing rather than printing an empty/broken line for them', () => {
+    const text = buildReceiptTicket(
+      { ...basePayload, outletName: 'Spice Route', gstin: '29ABCDE1234F1Z5' },
+      42,
+      new Date(),
+    ).toString('ascii');
+    expect(text).toContain('Spice Route');
+    expect(text).toContain('GSTIN: 29ABCDE1234F1Z5');
+    expect(text).not.toContain('Ph:');
+    expect(text).not.toContain('FSSAI:');
+  });
 });
 
 describe('renderJobPayload', () => {
