@@ -58,14 +58,31 @@ cp apps/pos_web/.env.example apps/pos_web/.env.local
 npm run dev:pos
 ```
 
-Once the three `.env.local`/`.env` files above are in place, `npm run dev:all` replaces those last
-three separate commands (and the terminals they each need) with one: it brings up Postgres +
-Redis (`docker:up:infra`, same as the quick-start command above — **not** the full `docker:up`),
-then runs the API + both web apps together in a single terminal, labeled and color-coded. To stop
-it, either Ctrl+C in that terminal (stops the three Node processes, leaves Postgres/Redis up), or
-run `npm run stop:all` from any terminal — even one that didn't start them, handy if you closed
-the `dev:all` terminal without Ctrl+C — which stops the Node processes *and* the Postgres/Redis
-containers in one go. Avoid running the plain `docker:up`/`docker:prod` at the same time as
+### Or: start everything with one command
+
+Once the three `.env.local`/`.env` files above exist (first-time-only setup — the `cp
+.env.example .env.local` lines in the block above), you don't need three separate terminals for
+steps 4–6 every day after that. One command replaces them:
+
+```bash
+npm run dev:all
+```
+
+This brings up Postgres + Redis (`docker:up:infra`, same as the quick-start command above —
+**not** the full `docker:up`), then runs the API + both web apps together in a single terminal,
+labeled and color-coded (`api`/`pos`/`web`). And to stop everything — servers *and* the
+Postgres/Redis containers — in one command, from any terminal, even one that didn't start
+`dev:all`:
+
+```bash
+npm run stop:all
+```
+
+(Ctrl+C in the `dev:all` terminal also works and is enough if you just want to pause the Node
+processes — it leaves Postgres/Redis running for next time; reach for `stop:all` when you want a
+full clean stop, or when you closed the `dev:all` terminal window instead of Ctrl+C-ing it.)
+
+Avoid running the plain `docker:up`/`docker:prod` at the same time as
 `dev:all`/`dev:api`/`dev:web`/`dev:pos` — those bring up dockerized `api`/`web`/`pos` containers
 bound to the same host ports (3000/3001/5173) the host processes use, which fails with
 `EADDRINUSE`; if that happens, `docker ps` will show the extra containers and `docker stop`/`rm`
