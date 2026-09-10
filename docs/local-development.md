@@ -112,6 +112,44 @@ The seed script (step 3) creates:
 
 These are **development-only** credentials seeded into a local database — never used in any deployed environment.
 
+## Start/stop everything at once
+
+Steps 2/4/5/6 above each open their own terminal, which is worth doing once so you understand
+what's actually running — but for every day after that, `npm run dev:all` collapses them into
+one:
+
+```bash
+npm run dev:all
+```
+
+This runs `docker:up` (Postgres + Redis, same as step 2), then starts the API, customer PWA, and
+POS web app together under [`concurrently`](https://www.npmjs.com/package/concurrently) in a
+single terminal — each line prefixed and color-coded by which process it's from (`api`/`pos`/
+`web`). Requires the same `.env`/`.env.local` files steps 1/5/6 already have you create; it
+doesn't run database migrations/seed (step 3) or the Flutter app (step 7) or the print agent
+(step 8, optional and needs its own credentials configured first — see that step) — those still
+run on their own. Ctrl+C in that terminal stops the three Node processes (`concurrently` forwards
+the signal to all of them) but leaves the Docker containers up, same as Ctrl+C-ing any one of
+`dev:api`/`dev:web`/`dev:pos` individually would.
+
+```bash
+npm run stop:all
+```
+
+Stops everything `dev:all` starts — the three Node dev servers *and* the Docker containers — in
+one command, from any terminal, not just the one `dev:all` is running in. That's the actual
+reason this exists as its own script rather than just "Ctrl+C stops everything": if you close
+the `dev:all` terminal window instead of pressing Ctrl+C in it (or started `dev:api`/`dev:web`/
+`dev:pos` the old way, as three separate processes), nothing sends them a signal and they keep
+running in the background, invisibly holding ports 3000/3001/5173 — the next `npm run dev:all`
+(or a plain `npm run dev:api`) then either fails to bind that port or, worse, Vite silently falls
+forward to the next free one (see `docs/troubleshooting.md`'s port-drift entry for what that
+breaks). `stop:all` (`scripts/stop-all.sh`) finds and stops whatever's actually listening on each
+of those three ports — reading the real `API_PORT` from `.env` rather than assuming 3000, in case
+you changed it — plus the print agent if it happens to be running (`dev:print`, matched by its
+command line since it holds no port), then runs `docker:down`. Every step is independently
+best-effort, so it's always safe to run even if only some of these are actually up.
+
 ## Running tests
 
 ```bash

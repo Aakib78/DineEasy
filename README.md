@@ -54,6 +54,13 @@ cp apps/pos_web/.env.example apps/pos_web/.env.local
 npm run dev:pos
 ```
 
+Once the three `.env.local`/`.env` files above are in place, `npm run dev:all` replaces those last
+three separate commands (and the terminals they each need) with one: it brings up Docker, then
+runs the API + both web apps together in a single terminal, labeled and color-coded. `npm run
+stop:all` stops all of it (Node dev servers + Postgres/Redis containers) from any terminal, even
+one that didn't start them — handy if you closed the `dev:all` terminal without Ctrl+C. See
+`docs/local-development.md`'s "Start/stop everything at once" section for detail.
+
 Then run the Flutter app (first time only, generates the platform folders — see `docs/flutter-app.md`):
 
 ```bash
