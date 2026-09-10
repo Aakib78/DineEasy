@@ -462,6 +462,32 @@ Kitchen/KDS, Billing, Reports) builds on top of, not those features themselves:
   missing-UI gap. Not yet verified in this environment — no Flutter/Dart SDK here; reviewed by
   hand plus a bracket-balance check on every touched file.
 
+- **Dining session detail view** (`lib/features/dining_sessions/`, reached via a new "View
+  session" icon on an occupied table's row in `TablesManagementScreen`): `GET
+  /dining-sessions`/`GET /dining-sessions/:id` had real, working logic — a table's full
+  occupancy record, every order placed during the current sitting and (on the detail route)
+  every item in each — but no UI consumer anywhere; the floor plan only ever showed a table's
+  bare status label, never what actually happened there. `DiningSession` (new
+  `data/dining_session_models.dart`) deliberately reuses the existing `Order`/`OrderItemSummary`
+  models from `features/pos` rather than defining a second copy — `Order.fromJson` already
+  defaults every relation it doesn't find to an empty list, so the identical parser is correct
+  against both `listOpenForOutlet`'s bare orders (`orders: true`, no items) and `getById`'s
+  fuller ones (`orders: {include: {items: true}}`). `DiningSessionDetailScreen` is read-only by
+  design: start time, elapsed duration, order count, running total, and a per-order item
+  breakdown, with cancelled items struck through; the one write action on a session
+  (`POST /dining-sessions/:id/close`) already existed as the "Available" status option in
+  `TablesManagementScreen`'s edit sheet from an earlier pass and isn't duplicated here.
+
+  `tables.view` gates both endpoints — the same permission that already shows
+  `TablesManagementScreen` at all — so the new "View session" icon is independent of that row's
+  existing `onTap` (edit sheet, `tables.manage`-gated): a Waiter who can't edit a table can still
+  see what's happened at it. `TablesManagementScreen` now watches a new `openDiningSessionsProvider`
+  (`GET /dining-sessions`) once per build to map every occupied table to its session id, rather
+  than each tile firing its own request; a slow or failed fetch just omits the icon rather than
+  blocking the floor plan (`maybeWhen(... orElse: () => const {})`). No backend changes needed.
+  Not yet verified in this environment — no Flutter/Dart SDK here; reviewed by hand plus a
+  bracket-balance check.
+
 **Not built yet**: offline/local-cache behavior (tracked with the LAN/offline backend slice —
 docs/offline-mode.md), real OS-level push/local notifications (the in-app inbox above is the
 step before that — it's a poll-driven bell, not a system notification), and the

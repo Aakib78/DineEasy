@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/auth/auth_session.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/rbac/permissions.dart';
+import '../dining_sessions/dining_session_detail_screen.dart';
+import '../dining_sessions/state/dining_sessions_providers.dart';
 import '../pos/data/pos_models.dart';
 import '../pos/state/pos_providers.dart';
 
@@ -21,6 +23,16 @@ class TablesManagementScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final floorsAsync = ref.watch(floorsProvider);
     final tablesAsync = ref.watch(tablesProvider);
+    // Best-effort only — a table tile just omits the "View session" action if this hasn't
+    // loaded yet or fails, rather than blocking the whole floor plan on it (the same
+    // fail-open spirit `PrintersService.enqueueForType` uses server-side, applied here to a
+    // read rather than a write).
+    final openSessionIdByTableId = ref
+        .watch(openDiningSessionsProvider)
+        .maybeWhen(
+          data: (sessions) => {for (final s in sessions) s.tableId: s.id},
+          orElse: () => const <String, String>{},
+        );
     // `tables.view` (checked by home_shell to show this tab at all) only guarantees read access
     // — creating/editing is `tables.manage`. Hiding the mutating controls for a view-only role
     // (e.g. a Waiter) is UX only, same caveat as everywhere else in this app: PermissionsGuard
@@ -93,6 +105,7 @@ class TablesManagementScreen extends ConsumerWidget {
                         (table) => _TableListTile(
                           table: table,
                           onTap: canManage ? () => _showEditTableSheet(context, table) : null,
+                          openSessionId: openSessionIdByTableId[table.id],
                         ),
                       ),
                       if (tables.where((t) => t.floorId == floor.id).isEmpty)
@@ -146,12 +159,18 @@ class TablesManagementScreen extends ConsumerWidget {
 }
 
 class _TableListTile extends StatelessWidget {
-  const _TableListTile({required this.table, required this.onTap});
+  const _TableListTile({required this.table, required this.onTap, this.openSessionId});
 
   final RestaurantTable table;
 
   /// Null for a view-only user — see `canManage` in `TablesManagementScreen.build`.
   final VoidCallback? onTap;
+
+  /// The table's current `DiningSession.id`, when it's occupied and that session's still
+  /// loading/loaded — independent of [onTap]/`canManage`, since viewing session history is
+  /// `tables.view`, not `tables.manage` (`DiningSessionsController`'s guard), so a Waiter who
+  /// can't edit a table can still see what's happened at it this sitting.
+  final String? openSessionId;
 
   @override
   Widget build(BuildContext context) {
@@ -166,7 +185,22 @@ class _TableListTile extends StatelessWidget {
       leading: Icon(icon, color: color),
       title: Text(table.name),
       subtitle: Text('${table.capacity} seats · ${_statusLabel(table.status)}'),
-      trailing: onTap != null ? const Icon(Icons.chevron_right) : null,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (openSessionId != null)
+            IconButton(
+              tooltip: 'View session',
+              icon: const Icon(Icons.receipt_long_outlined),
+              onPressed: () => Navigator.of(context).push<void>(
+                MaterialPageRoute(
+                  builder: (_) => DiningSessionDetailScreen(sessionId: openSessionId!),
+                ),
+              ),
+            ),
+          if (onTap != null) const Icon(Icons.chevron_right),
+        ],
+      ),
       onTap: onTap,
     );
   }
