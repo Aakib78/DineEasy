@@ -13,19 +13,31 @@
 # 404. See docs/troubleshooting.md for the full story; this was the first time this image
 # was ever actually built (Docker Hub is blocked in the sandbox this repo was scaffolded in,
 # so only `docker compose config` had been validated before this).
+#
+# `npm install` is deliberately scoped to `--workspace apps/customer_web --workspace
+# packages/shared_types`, not a blanket install of the whole monorepo — this image only needs
+# those two workspaces' dependencies, and only their package.json files are copied in above.
+# The first real end-to-end `docker compose up` (this Dockerfile builds, but had never actually
+# been run through `docker:up`/`dev:all` before) caught a second real bug here: an unscoped
+# `npm install` also pulls in every *other* workspace's dependencies, including
+# `services/print-agent`'s `usb` package (a native addon for real USB thermal printers — see
+# docs/printing.md), which requires node-gyp + a C/C++ toolchain + Python to build from source,
+# none of which `node:20-alpine` has — and print-agent isn't even meant to run in Docker
+# (docs/printing.md: "a standalone Node process meant to run on the restaurant's LAN", not
+# shipped as part of any app image). Scoping the install is the actual fix, not adding a
+# Python/build-tool layer just to satisfy a dependency this image never uses. Mirrored in
+# apps/pos_web/Dockerfile, which hit the identical failure the same way.
 
 FROM node:20-alpine AS base
 WORKDIR /repo
 COPY package.json package-lock.json* ./
 COPY apps/customer_web/package.json ./apps/customer_web/package.json
 COPY packages/shared_types/package.json ./packages/shared_types/package.json
-COPY services/api/package.json ./services/api/package.json
-COPY services/print-agent/package.json ./services/print-agent/package.json
 
 # ---------------------------------------------------------------------------
 FROM base AS development
 ENV NODE_ENV=development
-RUN npm install
+RUN npm install --workspace apps/customer_web --workspace packages/shared_types
 COPY packages/shared_types ./packages/shared_types
 COPY apps/customer_web ./apps/customer_web
 WORKDIR /repo/apps/customer_web
@@ -34,7 +46,7 @@ CMD ["npm", "run", "dev", "--", "--host"]
 
 # ---------------------------------------------------------------------------
 FROM base AS build
-RUN npm install
+RUN npm install --workspace apps/customer_web --workspace packages/shared_types
 COPY packages/shared_types ./packages/shared_types
 COPY apps/customer_web ./apps/customer_web
 WORKDIR /repo/apps/customer_web

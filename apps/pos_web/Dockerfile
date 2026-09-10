@@ -6,20 +6,31 @@
 # `development` target is used by docker-compose.dev.yml (source-mounted, Vite HMR).
 # `production` (default) target is what docker-compose.yml (LAN deployment) builds: a static
 # build served by nginx, since this is a client-only SPA with no server-side rendering.
+#
+# `npm install` is deliberately scoped to `--workspace apps/pos_web --workspace
+# packages/shared_types`, not a blanket install of the whole monorepo — this image only needs
+# those two workspaces' dependencies, and only their package.json files are copied in above.
+# The first real Docker build of this image (this was never actually run before — see
+# docs/troubleshooting.md's port-drift/CORS entries for the same "first real run caught a real
+# bug" pattern elsewhere in this project) failed here: an unscoped `npm install` also pulls in
+# every *other* workspace's dependencies, including `services/print-agent`'s `usb` package (a
+# native addon it needs for real USB thermal printers — see docs/printing.md), which requires
+# node-gyp + a C/C++ toolchain + Python to build from source, none of which `node:20-alpine` has
+# — and print-agent isn't even meant to run in Docker in the first place (docs/printing.md: "a
+# standalone Node process meant to run on the restaurant's LAN", not shipped as part of any app
+# image). Scoping the install is the actual fix, not adding a Python/build-tool layer just to
+# satisfy a dependency this image never uses.
 
 FROM node:20-alpine AS base
 WORKDIR /repo
 COPY package.json package-lock.json* ./
 COPY apps/pos_web/package.json ./apps/pos_web/package.json
-COPY apps/customer_web/package.json ./apps/customer_web/package.json
 COPY packages/shared_types/package.json ./packages/shared_types/package.json
-COPY services/api/package.json ./services/api/package.json
-COPY services/print-agent/package.json ./services/print-agent/package.json
 
 # ---------------------------------------------------------------------------
 FROM base AS development
 ENV NODE_ENV=development
-RUN npm install
+RUN npm install --workspace apps/pos_web --workspace packages/shared_types
 COPY packages/shared_types ./packages/shared_types
 COPY apps/pos_web ./apps/pos_web
 WORKDIR /repo/apps/pos_web
@@ -28,7 +39,7 @@ CMD ["npm", "run", "dev", "--", "--host"]
 
 # ---------------------------------------------------------------------------
 FROM base AS build
-RUN npm install
+RUN npm install --workspace apps/pos_web --workspace packages/shared_types
 COPY packages/shared_types ./packages/shared_types
 COPY apps/pos_web ./apps/pos_web
 WORKDIR /repo/apps/pos_web
