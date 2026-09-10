@@ -70,6 +70,24 @@ If you only need Postgres + Redis (the normal day-to-day setup — see the top o
 docker compose --env-file .env -f infrastructure/docker/docker-compose.yml -f infrastructure/docker/docker-compose.dev.yml up -d postgres redis
 ```
 
+### Fixed in this repo: `docker:up` fails building the `pos`/`web` image with a `node-gyp`/Python error in `services/print-agent`'s `usb` package
+
+Caught the first time `npm run dev:all` (see "Start/stop everything at once" in `docs/local-development.md`) was actually run on a real machine — same "never built before" story as the previous entry, one layer deeper. Symptom, partway through `[development 1/4] RUN npm install`:
+
+```
+npm error gyp ERR! find Python
+npm error gyp ERR! find Python You need to install the latest version of Python.
+...
+npm error gyp ERR! stack Error: Could not find any Python installation to use
+npm error path /repo/node_modules/usb
+npm error command failed
+npm error command sh -c node-gyp-build
+```
+
+Cause: `apps/pos_web/Dockerfile` and `apps/customer_web/Dockerfile` both build from the monorepo root context (needed so `npm install` can resolve the local `packages/shared_types` workspace — see the previous entry) and used to run a single unscoped `npm install`. In an npm workspaces monorepo, an unscoped install at the root installs *every* workspace's dependencies, not just the one or two the image actually needs — so building the `pos` (or `web`) image also tried to install `services/print-agent`'s dependencies, including `usb` (a native addon it needs for real USB thermal printers, see `docs/printing.md`). `usb` has no prebuilt binary for `linux/arm64` on the npm registry, so it fell back to compiling from source via `node-gyp`, which needs Python + a C/C++ toolchain — neither is in the plain `node:20-alpine` base image, so the build failed outright. Neither `apps/pos_web` nor `apps/customer_web` has any actual runtime dependency on `usb` or print-agent at all; they only ever needed it because the install wasn't scoped.
+
+Fixed by scoping the install instead of adding a Python/build-tool layer to satisfy a dependency these images never use: both Dockerfiles now run `npm install --workspace apps/<app> --workspace packages/shared_types`, and their `base` stage only copies those two workspaces' `package.json` files (dropped the now-unneeded `services/api`/`services/print-agent`/sibling-web-app copies that existed purely to satisfy an unscoped install). Verified directly (not through a full Docker build — this sandbox's Docker daemon can't start in its own container, a further-nested-sandboxing limitation, not the Docker Hub block the entries above hit): reproduced the exact same `COPY`+`npm install` sequence each Dockerfile's `base`/`development` stage runs, using the real root `package.json`/`package-lock.json`, outside Docker — confirmed the scoped install exits 0, correctly symlinks `@dineeasy/shared-types` from the local workspace (the thing the previous entry's fix was for — still works), and never touches `usb`, whether or not `services/print-agent`'s `package.json` is even present in the build context. `docker-compose.dev.yml`'s existing anonymous-volume protection for each container's own `node_modules` needed no changes — it already isolates the image's Linux-built `node_modules` from the host bind mount, which is exactly what's now (correctly) missing `usb`. **Not yet confirmed against a real `docker build`** — that still needs to happen on a machine where the daemon actually runs; the npm-level reproduction above is the strongest verification available until then.
+
 ### Fixed in this repo: `npm run dev:api` fails to compile with 8 `tsc` errors, all in files touching Prisma's generated `Json`/enum types
 
 The last piece invisible in this sandbox for the usual reason — this repo's own `tsc` here has only ever run against a placeholder stub client (`node_modules/.prisma/client` ships a generic `PrismaClient: any` fallback until `prisma generate` actually completes, and `generate` has always 403'd here), so nothing that depends on the real generated types — a specific enum member, a `Json` field's exact input type — had ever actually been checked before this. All 8 errors were one of two shapes:
