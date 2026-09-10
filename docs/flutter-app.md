@@ -425,6 +425,43 @@ Kitchen/KDS, Billing, Reports) builds on top of, not those features themselves:
   validated field needing the null-to-omit workaround). No backend changes needed. Not yet
   verified in this environment — no Flutter/Dart SDK here.
 
+- **Signup: register + first-outlet onboarding** (`lib/features/auth/register_screen.dart`,
+  `lib/features/outlets/create_outlet_screen.dart`): `POST /auth/register` existed with full
+  working logic (creates an Organization + Owner user, seeds system roles, returns a token pair
+  — same shape `/auth/login` returns) but no UI ever called it; there was no way for a new
+  restaurant to sign up at all. `RegisterScreen` mirrors `LoginScreen`'s layout exactly (same
+  brand-gradient card), reached via a new "New restaurant? Create one" link there and a new
+  `/register` route in `app_router.dart` (added an `isOnRegister` exemption alongside the
+  existing `isOnLogin` one, both in the redirect's "send to /login" branch and its "send to
+  /home once authenticated" branch — registering *is* signing in, `AuthSessionNotifier.register`
+  mirrors `login` exactly and lands on `AuthSessionAuthenticated` the same way).
+  `AuthRepository`/`AuthSessionNotifier` gained matching `register()` methods; `AuthRepository`
+  had no changes needed to its request-interceptor pre-auth handling since it already skips
+  attaching a token for any `/auth/*` path.
+
+  A fresh owner's token always comes back with `activeOutletId: null` (`AuthService.register`
+  deliberately never creates an outlet — spec §68 splits that into its own step), which used to
+  land on `HomeShell`'s existing "you're not assigned to an outlet — ask your manager" screen, a
+  dead end for someone who *is* the owner of an organization with no manager yet to ask.
+  `_NoOutletAssignedScreen` now tells this case apart from an ordinary unassigned-staff-member
+  case (which looks identical in the JWT — see `AuthService.resolveActiveOutlet`'s doc comment)
+  by checking, only for a user holding `settings.manage`, whether `GET /outlets` (via the
+  already-existing `staffOutletsProvider` from the Staff feature — reused rather than duplicated)
+  comes back empty; if so it shows a "Let's set up your first outlet" CTA into new
+  `CreateOutletScreen` instead. That screen's fields mirror `OutletSettingsScreen`'s edit form
+  (name/code required, everything else optional) and call a new `OutletRepository.create()`
+  (`POST /outlets`) alongside its existing `getById`/`update`. After creating the outlet, the
+  signed-in user's *current* access token is stale — it was minted before this outlet existed,
+  so `AuthService.resolveActiveOutlet`'s "auto-pick when the org has exactly one outlet"
+  heuristic couldn't have picked it yet. New `AuthSessionNotifier.refreshClaims()` (re-runs
+  `/auth/refresh` and updates session state from the result — deliberately distinct from the
+  automatic 401-triggered refresh `ApiClient`'s interceptor already performs, since this one is
+  caller-driven outside any failed-request context) is what actually clears the "no outlet"
+  screen afterward; the screen also pops itself once that resolves. No backend changes needed —
+  both `POST /auth/register` and `POST /outlets` were already correct and complete, purely a
+  missing-UI gap. Not yet verified in this environment — no Flutter/Dart SDK here; reviewed by
+  hand plus a bracket-balance check on every touched file.
+
 **Not built yet**: offline/local-cache behavior (tracked with the LAN/offline backend slice —
 docs/offline-mode.md), real OS-level push/local notifications (the in-app inbox above is the
 step before that — it's a poll-driven bell, not a system notification), and the
