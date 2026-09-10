@@ -122,15 +122,26 @@ one:
 npm run dev:all
 ```
 
-This runs `docker:up` (Postgres + Redis, same as step 2), then starts the API, customer PWA, and
-POS web app together under [`concurrently`](https://www.npmjs.com/package/concurrently) in a
-single terminal — each line prefixed and color-coded by which process it's from (`api`/`pos`/
-`web`). Requires the same `.env`/`.env.local` files steps 1/5/6 already have you create; it
-doesn't run database migrations/seed (step 3) or the Flutter app (step 7) or the print agent
-(step 8, optional and needs its own credentials configured first — see that step) — those still
-run on their own. Ctrl+C in that terminal stops the three Node processes (`concurrently` forwards
-the signal to all of them) but leaves the Docker containers up, same as Ctrl+C-ing any one of
-`dev:api`/`dev:web`/`dev:pos` individually would.
+This runs `docker:up:infra` — **only** Postgres + Redis, the exact same `docker compose ... up -d
+postgres redis` step 2 above runs by hand — then starts the API, customer PWA, and POS web app
+together under [`concurrently`](https://www.npmjs.com/package/concurrently) in a single terminal —
+each line prefixed and color-coded by which process it's from (`api`/`pos`/`web`). It deliberately
+does **not** call the plain `docker:up` script: that one (no service names) brings up the *whole*
+dockerized stack, including a containerized `api` bound to host port 3000 — running that
+alongside the host `dev:api` process below is a guaranteed `EADDRINUSE` on port 3000, which is
+exactly what happened the first time this was actually run (see
+`docs/troubleshooting.md`). Requires the same `.env`/`.env.local` files steps 1/5/6 already have
+you create; it doesn't run database migrations/seed (step 3) or the Flutter app (step 7) or the
+print agent (step 8, optional and needs its own credentials configured first — see that step) —
+those still run on their own. Ctrl+C in that terminal stops the three Node processes
+(`concurrently` forwards the signal to all of them) but leaves the Docker containers up, same as
+Ctrl+C-ing any one of `dev:api`/`dev:web`/`dev:pos` individually would.
+
+If you hit the `EADDRINUSE` error on port 3000 right now (a dockerized `api` container from an
+earlier plain `docker:up`, or a stray dockerized `pos`/`web` still running), run `npm run
+stop:all` first — it calls `docker:down`, which stops *every* container these compose files can
+start, dockerized `api`/`web`/`pos` included, not just Postgres/Redis — then `npm run dev:all`
+again.
 
 ```bash
 npm run stop:all
