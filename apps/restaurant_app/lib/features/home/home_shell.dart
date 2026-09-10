@@ -12,10 +12,12 @@ import '../billing/billing_screen.dart';
 import '../kitchen/kds_screen.dart';
 import '../notifications/notifications_screen.dart';
 import '../notifications/state/notifications_providers.dart';
+import '../outlets/create_outlet_screen.dart';
 import '../pos/pos_home_screen.dart';
 import '../reports/reports_screen.dart';
 import '../settings/settings_screen.dart';
 import '../staff/staff_screen.dart';
+import '../staff/state/staff_providers.dart';
 import '../tables/tables_management_screen.dart';
 
 class _Destination {
@@ -380,6 +382,60 @@ class _NoOutletAssignedScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // `activeOutletId == null` covers two very different real situations that look identical
+    // in the JWT (see AuthService.resolveActiveOutlet's doc comment): an ordinary staff member
+    // nobody has assigned to an outlet yet, and a fresh Owner (RegisterScreen) whose brand-new
+    // organization simply has zero outlets, for whom "ask your manager" is nonsensical — no
+    // manager exists yet, and *they* are the one who'd need to be asked. `settings.manage` plus
+    // an empty `GET /outlets` is what tells these two apart client-side; the outlets list is
+    // fetched only for a user who could plausibly be the fresh-owner case, so an ordinary staff
+    // member never pays for an extra request just to render the unchanged fallback message.
+    final canManageSettings = user.hasPermission(Permissions.settingsManage);
+    final outletsAsync = canManageSettings ? ref.watch(staffOutletsProvider) : null;
+    final isFreshOrgOwner = canManageSettings && (outletsAsync?.valueOrNull?.isEmpty ?? false);
+
+    if (isFreshOrgOwner) {
+      return Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.storefront, size: 48),
+                const SizedBox(height: 16),
+                Text(
+                  "Let's set up your first outlet",
+                  style: Theme.of(context).textTheme.titleLarge,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '${user.name}, your account is ready — add the restaurant location your '
+                  'staff will actually work at to get started.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                FilledButton.icon(
+                  icon: const Icon(Icons.add),
+                  label: const Text('Create your outlet'),
+                  onPressed: () => Navigator.of(
+                    context,
+                  ).push<void>(MaterialPageRoute(builder: (_) => const CreateOutletScreen())),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  onPressed: () => ref.read(authSessionProvider.notifier).logout(),
+                  child: const Text('Sign out'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       body: Center(
         child: Padding(

@@ -85,6 +85,49 @@ class AuthSessionNotifier extends StateNotifier<AuthSessionState> {
     }
   }
 
+  /// Register a brand-new organization + owner account. Success is auto-login (mirrors
+  /// [login]) — the register screen never sends the new owner to a separate sign-in step. A
+  /// failure (e.g. a duplicate org name isn't actually rejected server-side, but a malformed
+  /// field is) surfaces the same way a failed login does, via `AuthSessionUnauthenticated.error`.
+  Future<void> register({
+    required String organizationName,
+    required String ownerName,
+    required String ownerEmail,
+    required String password,
+    String? phone,
+  }) async {
+    state = const AuthSessionAuthenticating();
+    try {
+      final claims = await _authRepository.register(
+        organizationName: organizationName,
+        ownerName: ownerName,
+        ownerEmail: ownerEmail,
+        password: password,
+        phone: phone,
+      );
+      state = AuthSessionAuthenticated(claims);
+    } on ApiException catch (e) {
+      state = AuthSessionUnauthenticated(error: e.message);
+    }
+  }
+
+  /// Re-issues a token pair against the currently-stored refresh token and updates [state] with
+  /// the newly-decoded claims — used right after the fresh-owner onboarding flow creates the
+  /// organization's first outlet, since `activeOutletId` in the *current* access token was
+  /// minted before that outlet existed (`AuthService.resolveActiveOutlet` only auto-picks when
+  /// exactly one outlet exists at token-issue time) and won't update on its own before the next
+  /// natural refresh. Deliberately distinct from the silent, automatic refresh
+  /// `ApiClient`'s interceptor performs on a 401 — this one is a caller-driven "go get me a
+  /// fresher token right now" used outside any failed-request context.
+  Future<void> refreshClaims() async {
+    try {
+      final claims = await _authRepository.refresh();
+      state = AuthSessionAuthenticated(claims);
+    } on ApiException catch (e) {
+      state = AuthSessionUnauthenticated(error: e.message);
+    }
+  }
+
   Future<void> logout() async {
     await _authRepository.logout();
     state = const AuthSessionUnauthenticated();

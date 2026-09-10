@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../auth/auth_session.dart';
 import '../../features/auth/login_screen.dart';
+import '../../features/auth/register_screen.dart';
 import '../../features/home/home_shell.dart';
 import '../../features/home/splash_screen.dart';
 
@@ -31,6 +32,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final session = ref.read(authSessionProvider);
       final isOnSplash = routerState.matchedLocation == '/splash';
       final isOnLogin = routerState.matchedLocation == '/login';
+      final isOnRegister = routerState.matchedLocation == '/register';
 
       switch (session) {
         case AuthSessionUnknown():
@@ -39,14 +41,21 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           return isOnSplash ? null : '/splash';
         case AuthSessionAuthenticating():
         case AuthSessionUnauthenticated():
-          return isOnLogin ? null : '/login';
+          return (isOnLogin || isOnRegister) ? null : '/login';
         case AuthSessionAuthenticated():
-          return (isOnSplash || isOnLogin) ? '/home' : null;
+          // Registering *is* signing in (AuthService.register returns a token pair directly,
+          // same as login) — a session that just went Authenticated while sitting on /register
+          // is routed to /home exactly like one that just logged in from /login. HomeShell's
+          // "no outlet assigned" screen is what then offers a fresh owner (activeOutletId is
+          // always null right after register — see AuthRepository.register's doc comment) a
+          // path into outlet-creation onboarding.
+          return (isOnSplash || isOnLogin || isOnRegister) ? '/home' : null;
       }
     },
     routes: [
       GoRoute(path: '/splash', builder: (context, state) => const SplashScreen()),
       GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
+      GoRoute(path: '/register', builder: (context, state) => const RegisterScreen()),
       GoRoute(path: '/home', builder: (context, state) => const HomeShell()),
     ],
   );

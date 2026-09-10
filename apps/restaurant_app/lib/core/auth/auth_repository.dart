@@ -17,6 +17,37 @@ class AuthRepository {
   final ApiClient _apiClient;
   final TokenStorage _tokenStorage;
 
+  /// `POST /auth/register` (`@Public()`) — spec §68 step 1, "restaurant owner creates account".
+  /// Creates a brand-new Organization + Owner user in one backend transaction and, like login,
+  /// returns a token pair directly: registering *is* signing in, no separate login call needed.
+  /// The returned claims' `activeOutletId` is always null here — a fresh organization has zero
+  /// outlets yet (`AuthService.register` deliberately doesn't create one), so the caller is
+  /// expected to route straight into outlet-creation onboarding rather than the normal app
+  /// shell. See `features/outlets/create_outlet_screen.dart`.
+  Future<AccessTokenClaims> register({
+    required String organizationName,
+    required String ownerName,
+    required String ownerEmail,
+    required String password,
+    String? phone,
+  }) async {
+    try {
+      final response = await _apiClient.dio.post<Map<String, dynamic>>(
+        '/auth/register',
+        data: {
+          'organizationName': organizationName,
+          'ownerName': ownerName,
+          'ownerEmail': ownerEmail,
+          'password': password,
+          if (phone != null && phone.isNotEmpty) 'phone': phone,
+        },
+      );
+      return _persistAndDecode(response.data!);
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
   /// [deviceInfo] is a free-text label like "POS-Counter-1 / Android" — stored server-side on
   /// the refresh token for session visibility (spec §21), not used for anything client-side.
   Future<AccessTokenClaims> login({
