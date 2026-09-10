@@ -36,16 +36,62 @@ class OrderBuilderScreen extends ConsumerStatefulWidget {
   ConsumerState<OrderBuilderScreen> createState() => _OrderBuilderScreenState();
 }
 
+// Mirrors OrdersService.cancelItem's `itemsLockedFrom` guard: once a bill exists, line items
+// are frozen even before payment, since the bill already reflects them.
+const _itemCancelLocked = {
+  OrderStatus.billed,
+  OrderStatus.paid,
+  OrderStatus.completed,
+  OrderStatus.cancelled,
+  OrderStatus.refunded,
+};
+
+// Mirrors the order-state-machine's CANCELLED transitions: reachable from every pre-payment
+// status, never once PAID/COMPLETED (money has moved by then).
+const _orderCancellable = {
+  OrderStatus.draft,
+  OrderStatus.placed,
+  OrderStatus.accepted,
+  OrderStatus.preparing,
+  OrderStatus.ready,
+  OrderStatus.served,
+  OrderStatus.billed,
+};
+
 class _OrderBuilderScreenState extends ConsumerState<OrderBuilderScreen> {
   bool _submitting = false;
   String? _submitError;
   bool _serving = false;
+  bool _accepting = false;
+  String? _cancellingItemId;
+  bool _cancellingOrder = false;
+  bool _confirmingCancel = false;
+  final _cancelReasonController = TextEditingController();
+
+  // The order being continued/inspected — starts as whatever PosHomeScreen passed in, then
+  // updated in place after accept/cancel-item so the banner reflects the mutation without a
+  // full screen re-entry. `widget.existingOrder` itself never changes during this screen's life
+  // (the caller doesn't rebuild it with fresh data), so this is the only source of truth here.
+  Order? _order;
+
+  @override
+  void initState() {
+    super.initState();
+    _order = widget.existingOrder;
+  }
+
+  @override
+  void dispose() {
+    _cancelReasonController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final menuAsync = ref.watch(menuProvider);
-    final continuingOrder = widget.existingOrder;
-    final canServe = ref.watch(currentUserProvider)?.hasPermission(Permissions.ordersUpdate) ?? false;
+    final continuingOrder = _order;
+    final canUpdate = ref.watch(currentUserProvider)?.hasPermission(Permissions.ordersUpdate) ?? false;
+    final canCancel = ref.watch(currentUserProvider)?.hasPermission(Permissions.ordersCancel) ?? false;
 
     return Scaffold(
       appBar: AppBar(
@@ -62,10 +108,30 @@ class _OrderBuilderScreenState extends ConsumerState<OrderBuilderScreen> {
               order: continuingOrder,
               // Only READY orders can be served (see order-state-machine.ts's READY ->
               // SERVED edge) — showing this for any other status would just 400.
-              onMarkServed: continuingOrder.status == OrderStatus.ready && canServe && !_serving
+              onMarkServed: continuingOrder.status == OrderStatus.ready && canUpdate && !_serving
                   ? () => _handleMarkServed(continuingOrder.id)
                   : null,
               isServing: _serving,
+              // Only PLACED orders can be accepted — see OrdersService.acceptOrder's doc
+              // comment: the kitchen already sees every PLACED order regardless, so this is
+              // purely a front-of-house acknowledgment step.
+              onAccept: continuingOrder.status == OrderStatus.placed && canUpdate && !_accepting
+                  ? () => _handleAccept(continuingOrder.id)
+                  : null,
+              isAccepting: _accepting,
+              canCancelItems: canCancel && !_itemCancelLocked.contains(continuingOrder.status),
+              cancellingItemId: _cancellingItemId,
+              onCancelItem: canCancel ? (itemId) => _handleCancelItem(continuingOrder.id, itemId) : null,
+              canCancelOrder: canCancel && _orderCancellable.contains(continuingOrder.status),
+              confirmingCancel: _confirmingCancel,
+              cancellingOrder: _cancellingOrder,
+              cancelReasonController: _cancelReasonController,
+              onStartCancelOrder: () => setState(() => _confirmingCancel = true),
+              onAbandonCancelOrder: () => setState(() {
+                _confirmingCancel = false;
+                _cancelReasonController.clear();
+              }),
+              onConfirmCancelOrder: () => _handleCancelOrder(continuingOrder.id),
             ),
           if (_submitError != null)
             Container(
@@ -120,7 +186,7 @@ class _OrderBuilderScreenState extends ConsumerState<OrderBuilderScreen> {
     });
 
     final ordersRepository = ref.read(ordersRepositoryProvider);
-    final continuingOrder = widget.existingOrder;
+    final continuingOrder = _order;
 
     try {
       if (continuingOrder != null) {
@@ -174,13 +240,101 @@ class _OrderBuilderScreenState extends ConsumerState<OrderBuilderScreen> {
       if (mounted) setState(() => _serving = false);
     }
   }
+
+  /// See OrdersRepository.accept's doc comment — a front-of-house acknowledgment, not a kitchen
+  /// gate, so staying on this screen afterward (rather than popping like Mark served does) is
+  /// deliberate: accepting is usually the first step toward adding items, not the last action
+  /// taken here.
+  Future<void> _handleAccept(String orderId) async {
+    setState(() => _accepting = true);
+
+    try {
+      final updated = await ref.read(ordersRepositoryProvider).accept(orderId);
+      ref.invalidate(activeOrdersProvider);
+      if (!mounted) return;
+      setState(() => _order = updated);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _accepting = false);
+    }
+  }
+
+  Future<void> _handleCancelItem(String orderId, String itemId) async {
+    setState(() => _cancellingItemId = itemId);
+
+    try {
+      final updated = await ref.read(ordersRepositoryProvider).cancelItem(orderId, itemId);
+      ref.invalidate(activeOrdersProvider);
+      if (!mounted) return;
+      setState(() => _order = updated);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _cancellingItemId = null);
+    }
+  }
+
+  Future<void> _handleCancelOrder(String orderId) async {
+    setState(() => _cancellingOrder = true);
+
+    try {
+      await ref.read(ordersRepositoryProvider).cancel(
+        orderId,
+        reason: _cancelReasonController.text.trim().isEmpty
+            ? null
+            : _cancelReasonController.text.trim(),
+      );
+      ref.read(posCartProvider.notifier).clear();
+      ref.invalidate(activeOrdersProvider);
+      ref.invalidate(tablesProvider);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Order cancelled')),
+      );
+      Navigator.of(context).pop();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      setState(() => _cancellingOrder = false);
+    }
+  }
 }
+
+String _statusLabel(OrderStatus status) => switch (status) {
+  OrderStatus.draft => 'Draft',
+  OrderStatus.placed => 'Placed',
+  OrderStatus.accepted => 'Accepted',
+  OrderStatus.preparing => 'Preparing',
+  OrderStatus.ready => 'Ready',
+  OrderStatus.served => 'Served',
+  OrderStatus.billed => 'Billed',
+  OrderStatus.paid => 'Paid',
+  OrderStatus.completed => 'Completed',
+  OrderStatus.cancelled => 'Cancelled',
+  OrderStatus.refunded => 'Refunded',
+};
 
 class _ExistingOrderBanner extends StatelessWidget {
   const _ExistingOrderBanner({
     required this.order,
     required this.onMarkServed,
     required this.isServing,
+    required this.onAccept,
+    required this.isAccepting,
+    required this.canCancelItems,
+    required this.cancellingItemId,
+    required this.onCancelItem,
+    required this.canCancelOrder,
+    required this.confirmingCancel,
+    required this.cancellingOrder,
+    required this.cancelReasonController,
+    required this.onStartCancelOrder,
+    required this.onAbandonCancelOrder,
+    required this.onConfirmCancelOrder,
   });
 
   final Order order;
@@ -189,37 +343,132 @@ class _ExistingOrderBanner extends StatelessWidget {
   /// since "why is this greyed out" isn't obvious to a busy waiter mid-shift.
   final VoidCallback? onMarkServed;
   final bool isServing;
+  /// Same "hide, don't disable" reasoning as [onMarkServed] — null when not currently PLACED,
+  /// lacking permission, or an accept call is already in flight.
+  final VoidCallback? onAccept;
+  final bool isAccepting;
+  /// Whether the signed-in user may cancel a line item on this order right now (permission +
+  /// not yet BILLED/settled) — gates the per-item Cancel action below.
+  final bool canCancelItems;
+  final String? cancellingItemId;
+  final ValueChanged<String>? onCancelItem;
+  /// Whether the whole order can still be voided (permission + a pre-payment status).
+  final bool canCancelOrder;
+  final bool confirmingCancel;
+  final bool cancellingOrder;
+  final TextEditingController cancelReasonController;
+  final VoidCallback onStartCancelOrder;
+  final VoidCallback onAbandonCancelOrder;
+  final VoidCallback onConfirmCancelOrder;
 
   @override
   Widget build(BuildContext context) {
     final activeItems = order.items.where((i) => !i.isCancelled).toList();
+    final onSecondary = Theme.of(context).colorScheme.onSecondaryContainer;
     return Container(
       width: double.infinity,
       color: Theme.of(context).colorScheme.secondaryContainer,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.receipt_long, size: 18, color: Theme.of(context).colorScheme.onSecondaryContainer),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'Adding to order #${order.orderNumber} — ${activeItems.length} '
-              '${activeItems.length == 1 ? 'item' : 'items'} already sent',
-              style: TextStyle(color: Theme.of(context).colorScheme.onSecondaryContainer),
-            ),
+          Row(
+            children: [
+              Icon(Icons.receipt_long, size: 18, color: onSecondary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Order #${order.orderNumber} — ${_statusLabel(order.status)} · '
+                  '${activeItems.length} ${activeItems.length == 1 ? 'item' : 'items'} already sent',
+                  style: TextStyle(color: onSecondary),
+                ),
+              ),
+              if (onAccept != null || isAccepting) ...[
+                const SizedBox(width: 8),
+                FilledButton.tonal(
+                  onPressed: onAccept,
+                  child: isAccepting
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Text('Accept'),
+                ),
+              ],
+              if (onMarkServed != null || isServing) ...[
+                const SizedBox(width: 8),
+                FilledButton.tonal(
+                  onPressed: onMarkServed,
+                  child: isServing
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Text('Mark served'),
+                ),
+              ],
+            ],
           ),
-          if (onMarkServed != null || isServing) ...[
-            const SizedBox(width: 8),
-            FilledButton.tonal(
-              onPressed: onMarkServed,
-              child: isServing
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Mark served'),
-            ),
+          if (activeItems.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            for (final item in activeItems)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${item.quantity}× ${item.nameSnapshot}'
+                        '${item.variantNameSnapshot != null ? ' (${item.variantNameSnapshot})' : ''}',
+                        style: TextStyle(color: onSecondary, fontSize: 13),
+                      ),
+                    ),
+                    if (canCancelItems && onCancelItem != null)
+                      cancellingItemId == item.id
+                          ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                          : TextButton(
+                              style: TextButton.styleFrom(
+                                minimumSize: Size.zero,
+                                padding: const EdgeInsets.symmetric(horizontal: 6),
+                              ),
+                              onPressed: () => onCancelItem!(item.id),
+                              child: Text('Cancel', style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12)),
+                            ),
+                  ],
+                ),
+              ),
+          ],
+          if (canCancelOrder) ...[
+            const SizedBox(height: 6),
+            if (confirmingCancel) ...[
+              TextField(
+                controller: cancelReasonController,
+                decoration: const InputDecoration(
+                  labelText: 'Reason (optional)',
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                "This voids the whole order — every item, sent or not. It can't be undone.",
+                style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12),
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  FilledButton.tonal(
+                    onPressed: cancellingOrder ? null : onConfirmCancelOrder,
+                    child: cancellingOrder
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Text('Confirm cancel'),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton(
+                    onPressed: cancellingOrder ? null : onAbandonCancelOrder,
+                    child: const Text('Never mind'),
+                  ),
+                ],
+              ),
+            ] else
+              TextButton(
+                onPressed: onStartCancelOrder,
+                child: Text('Cancel this order', style: TextStyle(color: Theme.of(context).colorScheme.error)),
+              ),
           ],
         ],
       ),

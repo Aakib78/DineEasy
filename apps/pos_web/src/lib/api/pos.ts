@@ -76,8 +76,33 @@ export const ordersApi = {
       body: { items: items.map(toOrderItemJson) },
     }),
 
+  /** PLACED -> ACCEPTED — front-of-house acknowledgment that a newly placed order (staff- or
+   * QR-guest-sourced) has been seen and is legitimate. Distinct from the kitchen actually
+   * starting it: `KitchenService.advanceOrderTo` auto-walks a still-PLACED order through
+   * ACCEPTED the moment any of its kitchen items leaves NEW, so calling this explicitly only
+   * matters for an order nobody's started cooking yet — see `OrdersService.acceptOrder`'s doc
+   * comment on the backend. `orders.update`-gated, same as `serve` below. */
+  accept: (orderId: string) => apiRequest<Order>(`/orders/${orderId}/accept`, { method: 'POST' }),
+
   /** READY -> SERVED — see OrderScreen's doc comment on why this is its own explicit action. */
   serve: (orderId: string) => apiRequest<Order>(`/orders/${orderId}/serve`, { method: 'POST' }),
+
+  /** `orders.cancel`-gated (Owner/Manager only — Waiter/Cashier can build and update an order
+   * but not void one). Blocked once the order is BILLED+settled (bill already reflects the
+   * item) — see `OrdersService.cancelItem`'s doc comment for why that's a stricter cutoff than
+   * `cancel` below. Returns the full, re-fetched order. */
+  cancelItem: (orderId: string, itemId: string) =>
+    apiRequest<Order>(`/orders/${orderId}/items/${itemId}/cancel`, { method: 'POST' }),
+
+  /** `orders.cancel`-gated. Legal from any pre-payment status (see the state machine in
+   * `order-state-machine.ts` — CANCELLED is reachable from everything except PAID/COMPLETED,
+   * which can only be REFUNDED once money has moved); the backend 400s otherwise. `reason` is
+   * optional and only for the audit trail — nothing downstream requires it. */
+  cancel: (orderId: string, reason?: string) =>
+    apiRequest<Order>(`/orders/${orderId}/cancel`, {
+      method: 'POST',
+      body: reason ? { reason } : {},
+    }),
 
   /** `orders.discount`-gated (Owner/Manager only). Only allowed while the order isn't yet
    * financially settled (not PAID/COMPLETED/CANCELLED/REFUNDED — BILLED is fine), and only once

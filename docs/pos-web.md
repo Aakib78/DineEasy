@@ -45,8 +45,16 @@ host stand.
   order surviving a reload would confuse staff more than help, see `PosCartContext.tsx`), and one
   screen handling both "start a new order" (`POST /orders`) and "add to an order already placed
   for this table" (`POST /orders/:id/items`) depending on whether `TablesScreen` found one already
-  open — same design as `order_builder_screen.dart`. A `READY` order also gets a "Mark served"
-  action here (`POST /orders/:id/serve`), gated on `orders.update`.
+  open — same design as `order_builder_screen.dart`. The existing-order banner shows the order's
+  live status plus every action its backend already supported with no UI caller until now: a
+  `PLACED` order gets an "Accept order" button (`POST /orders/:id/accept`, `orders.update` —
+  front-of-house acknowledgment, not a kitchen gate; see `OrdersService.acceptOrder`'s doc
+  comment on why the kitchen already sees the order regardless), a `READY` order gets "Mark
+  served" (`POST /orders/:id/serve`, `orders.update`), each active line item gets an inline
+  "Cancel" once the order isn't `BILLED`+settled (`POST /orders/:id/items/:itemId/cancel`,
+  `orders.cancel`), and any pre-payment order gets a two-step "Cancel this order" (optional
+  reason, explicit confirm — `POST /orders/:id/cancel`, `orders.cancel`, Owner/Manager only).
+  Mirrors `order_builder_screen.dart`'s identical addition.
 - **Billing + payments** (`src/features/billing/`): a board of orders ready to bill or awaiting
   payment (reusing `GET /orders`, filtered client-side to SERVED/BILLED/PAID — no dedicated
   endpoint exists), a detail screen to generate an invoice (`POST /orders/:id/invoice`, idempotent

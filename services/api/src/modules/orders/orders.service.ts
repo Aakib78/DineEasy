@@ -375,6 +375,20 @@ export class OrdersService {
   // Status transitions
   // ---------------------------------------------------------------------
 
+  /**
+   * PLACED -> ACCEPTED, staff-declared. Every order (POS-placed or QR guest-placed) already has
+   * a KOT and sits in the kitchen queue the moment it's PLACED (see `createOrder` above) — this
+   * endpoint doesn't gate the kitchen seeing it, it's a front-of-house acknowledgment step ("a
+   * human has seen this order and it's legitimate"), most meaningful for a QR order nobody at
+   * the restaurant has looked at yet.
+   *
+   * Note this transition also happens *implicitly*: `KitchenService.advanceOrderTo` walks a
+   * still-PLACED order forward through every intermediate `KITCHEN_DRIVEN_PATH` status,
+   * including ACCEPTED, the moment any of its kitchen items leaves NEW — so an order the kitchen
+   * has already started cooking reaches ACCEPTED on its own, and calling this explicitly is only
+   * meaningful for one nobody has started yet. Calling it on an order that's already past PLACED
+   * fails `assertOrderTransition` like any other illegal jump.
+   */
   async acceptOrder(
     organizationId: string,
     outletId: string,
