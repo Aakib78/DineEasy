@@ -4,6 +4,7 @@ import type { Floor, RestaurantTable, Order } from '@dineeasy/shared-types';
 import { tablesApi, ordersApi } from '../../lib/api/pos';
 import { ApiError } from '../../lib/api/client';
 import { useRealtimeEvent } from '../../lib/realtime/RealtimeContext';
+import { STATUS_LABELS } from '../order/orderStatusLabels';
 
 /**
  * The landing screen: a floor-by-floor table grid plus a Takeaway entry point — mirrors
@@ -11,6 +12,14 @@ import { useRealtimeEvent } from '../../lib/realtime/RealtimeContext';
  * ever *finds or starts* an order; all menu browsing/cart building happens one level down in
  * OrderScreen, so this screen's job stays legible: "which table (or takeaway slot) am I
  * working on?"
+ *
+ * A dine-in order always has a reopen path even after staff navigate away — tapping its table
+ * again finds it via `activeOrders`. A takeaway order has no table, so before the "Active
+ * takeaway orders" list below existed, a takeaway order placed and then navigated away from
+ * was permanently unreachable: it never appears in Billing's "Incomplete" tab (billable only
+ * from SERVED onward) or anywhere in the Kitchen Display (which has no order-detail
+ * navigation), so nothing could ever accept it, mark it served, or cancel it. This list is
+ * that missing reopen path — the takeaway equivalent of tapping an occupied table.
  */
 export function TablesScreen() {
   const navigate = useNavigate();
@@ -72,6 +81,9 @@ export function TablesScreen() {
   const visibleTables = effectiveFloorId
     ? tables.filter((t) => t.floorId === effectiveFloorId)
     : [];
+  const activeTakeawayOrders = [...activeOrders]
+    .filter((o) => o.type === 'TAKEAWAY')
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
   function openTable(table: RestaurantTable) {
     const existingOrder = activeOrders.find((o) => o.tableId === table.id);
@@ -87,6 +99,12 @@ export function TablesScreen() {
 
   function startTakeaway() {
     navigate('/order', { state: { type: 'TAKEAWAY', tableId: null, tableName: null, existingOrderId: null } });
+  }
+
+  function openTakeawayOrder(order: Order) {
+    navigate('/order', {
+      state: { type: 'TAKEAWAY', tableId: null, tableName: null, existingOrderId: order.id },
+    });
   }
 
   return (
@@ -111,6 +129,33 @@ export function TablesScreen() {
           🛍️ Takeaway
         </button>
       </div>
+
+      {activeTakeawayOrders.length > 0 && (
+        <div className="tables-screen__takeaway-section">
+          <h2 className="tables-screen__section-title">
+            Active takeaway orders ({activeTakeawayOrders.length})
+          </h2>
+          <ul className="billing-list">
+            {activeTakeawayOrders.map((order) => {
+              const activeItemCount = order.items.filter((i) => !i.isCancelled).length;
+              return (
+                <li key={order.id}>
+                  <button className="billing-tile" onClick={() => openTakeawayOrder(order)}>
+                    <div className="billing-tile__info">
+                      <span className="billing-tile__title">🛍️ {order.orderNumber}</span>
+                      <span className="billing-tile__status billing-tile__status--info">
+                        {STATUS_LABELS[order.status]} · {activeItemCount}{' '}
+                        {activeItemCount === 1 ? 'item' : 'items'}
+                      </span>
+                    </div>
+                    <span className="billing-tile__total">₹{Number(order.total).toFixed(0)}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
 
       {visibleTables.length === 0 ? (
         <p className="empty-state__hint">No tables on this floor yet.</p>
