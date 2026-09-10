@@ -44,6 +44,16 @@ delivers them one of two ways depending on the printer's `connectionType`:
   printer). Requires the printer to be physically connected to whichever machine runs the agent
   — never a phone or tablet, which can't drive USB hardware for a client app to begin with.
 
+**Receipt header**: a printed `RECEIPT` ticket now carries the outlet's own identity — name,
+composed address line, phone, GSTIN, and FSSAI license, whichever of those the `Outlet` row
+actually has set (all optional on the schema). `BillingService.buildReceiptPayload` fetches the
+invoice's `Outlet` and adds these as extra, independently-omittable fields on the same opaque
+JSON payload `escpos.ts`'s `buildReceiptTicket` already rendered from — a payload with none of
+them (an older queued job, or an API version that predates this) still renders exactly as
+before, falling back to a bare "RECEIPT" title. Previously the printed bill named nobody: no
+restaurant name, address, or GSTIN anywhere on it. See `docs/architecture.md`'s "Printed receipts
+now carry the outlet's identity" bullet for the full detail.
+
 See `services/print-agent/README.md`'s "Verification status" for exactly how the `NETWORK`
 path was verified without physical printer hardware (a real local TCP server standing in for
 the printer, a real local HTTP server standing in for `services/api`, plus an actual
