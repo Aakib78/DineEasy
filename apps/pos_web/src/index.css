@@ -462,6 +462,17 @@ button {
   margin-bottom: 14px;
 }
 
+.tables-screen__takeaway-section {
+  margin-bottom: 20px;
+}
+
+.tables-screen__section-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-muted);
+  margin: 0 0 10px;
+}
+
 .table-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));

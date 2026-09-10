@@ -106,7 +106,15 @@ export class OrdersService {
         itemSubtotals: prepared.map((p) => p.priced.subtotal),
         itemTaxes: prepared.map((p) => p.priced.taxAmount),
         discountTotal: new Decimal(0),
-        serviceChargePercent: new Decimal(outlet.serviceChargePercent.toString()),
+        // A service charge is a table-service fee (spec §16) — never appropriate for a
+        // takeaway order that gets no table service, and `Outlet.serviceChargePercent` has no
+        // per-order-type carve-out of its own, so this is the one place that decides it applies
+        // to DINE_IN only. Mirrored in `recalcTotals` below (the same computation re-run after
+        // every add-items/cancel-item/discount mutation) — see that method's identical guard.
+        serviceChargePercent:
+          dto.type === 'DINE_IN'
+            ? new Decimal(outlet.serviceChargePercent.toString())
+            : new Decimal(0),
         roundOffEnabled: outlet.roundOffEnabled,
       });
 
@@ -593,18 +601,26 @@ export class OrdersService {
     outletId: string,
     orderId: string,
   ) {
-    const [items, discounts, outlet] = await Promise.all([
+    const [items, discounts, outlet, order] = await Promise.all([
       tx.orderItem.findMany({ where: { orderId, isCancelled: false } }),
       tx.discountApplication.findMany({ where: { orderId } }),
       tx.outlet.findFirst({ where: { id: outletId, organizationId } }),
+      tx.order.findFirst({ where: { id: orderId, organizationId }, select: { type: true } }),
     ]);
     if (!outlet) throw new NotFoundDomainError('Outlet', outletId);
+    if (!order) throw new NotFoundDomainError('Order', orderId);
 
     const totals = computeOrderTotals({
       itemSubtotals: items.map((i) => new Decimal(i.subtotal.toString())),
       itemTaxes: items.map((i) => new Decimal(i.taxAmount.toString())),
       discountTotal: discounts.reduce((sum, d) => sum.plus(d.amount.toString()), new Decimal(0)),
-      serviceChargePercent: new Decimal(outlet.serviceChargePercent.toString()),
+      // Same DINE_IN-only guard as `createOrder` above — a service charge shouldn't appear on
+      // a takeaway order's total just because it picked up an item/discount change after being
+      // placed.
+      serviceChargePercent:
+        order.type === 'DINE_IN'
+          ? new Decimal(outlet.serviceChargePercent.toString())
+          : new Decimal(0),
       roundOffEnabled: outlet.roundOffEnabled,
     });
 

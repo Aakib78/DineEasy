@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/money/money.dart';
 import '../../core/realtime/realtime_providers.dart';
 import 'data/pos_models.dart';
 import 'order_builder_screen.dart';
@@ -14,6 +15,14 @@ import 'widgets/table_tile.dart';
 /// flat list. This screen only ever *finds or starts* an order — all the actual menu browsing /
 /// cart building happens one level down in OrderBuilderScreen, kept separate so this screen's
 /// job stays legible: "which table (or takeaway slot) am I working on?"
+///
+/// A dine-in order always has a reopen path even after staff navigate away — tapping its table
+/// again finds it in `activeOrders` (see `_openTable`). A takeaway order has no table, so
+/// before the "Active takeaway orders" list below existed, one placed and then navigated away
+/// from was permanently unreachable: it never appears in Billing's Incomplete tab (billable
+/// only from `SERVED` onward) and the Kitchen Display has no order-detail navigation at all, so
+/// nothing could ever accept it, mark it served, cancel it, or add items to it. This list is
+/// that missing reopen path — the takeaway equivalent of tapping an occupied table.
 class PosHomeScreen extends ConsumerStatefulWidget {
   const PosHomeScreen({super.key});
 
@@ -95,6 +104,10 @@ class _PosHomeScreenState extends ConsumerState<PosHomeScreen> {
                   .where((o) => o.tableId != null)
                   .map((o) => o.tableId)
                   .toSet();
+              // `activeOrdersProvider` already comes back oldest-first (backend's
+              // `listActiveForOutlet` is `orderBy: { createdAt: 'asc' }`) — no client-side sort
+              // needed, just filter to the type this section cares about.
+              final activeTakeawayOrders = activeOrders.where((o) => o.type == 'TAKEAWAY').toList();
 
               final sortedFloors = [...floors]
                 ..sort((a, b) => a.displayOrder.compareTo(b.displayOrder));
@@ -142,6 +155,27 @@ class _PosHomeScreenState extends ConsumerState<PosHomeScreen> {
                       ],
                     ),
                   ),
+                  if (activeTakeawayOrders.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Active takeaway orders (${activeTakeawayOrders.length})',
+                            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                              color: Theme.of(context).colorScheme.outline,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          for (final order in activeTakeawayOrders)
+                            _TakeawayOrderTile(
+                              order: order,
+                              onTap: () => _openTakeawayOrder(context, order),
+                            ),
+                        ],
+                      ),
+                    ),
                   Expanded(
                     child: visibleTables.isEmpty
                         ? ListView(
@@ -214,6 +248,63 @@ class _PosHomeScreenState extends ConsumerState<PosHomeScreen> {
       ),
     );
   }
+
+  void _openTakeawayOrder(BuildContext context, Order order) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => OrderBuilderScreen(
+          type: 'TAKEAWAY',
+          tableId: null,
+          tableName: null,
+          existingOrder: order,
+        ),
+      ),
+    );
+  }
+}
+
+/// One row in the "Active takeaway orders" list — deliberately plain (`Card`+`ListTile`) rather
+/// than reusing `TableTile`'s grid-tile visuals, since a takeaway order has no capacity/floor
+/// position to show and reads better as a list than a grid.
+class _TakeawayOrderTile extends StatelessWidget {
+  const _TakeawayOrderTile({required this.order, required this.onTap});
+
+  final Order order;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final activeItemCount = order.items.where((i) => !i.isCancelled).length;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: const Icon(Icons.shopping_bag_outlined),
+        title: Text(order.orderNumber),
+        subtitle: Text(
+          '${_statusLabel(order.status)} · $activeItemCount ${activeItemCount == 1 ? 'item' : 'items'}',
+        ),
+        trailing: Text(
+          Money.parse(order.total).format(),
+          style: Theme.of(context).textTheme.titleSmall,
+        ),
+        onTap: onTap,
+      ),
+    );
+  }
+
+  String _statusLabel(OrderStatus status) => switch (status) {
+    OrderStatus.draft => 'Draft',
+    OrderStatus.placed => 'Placed',
+    OrderStatus.accepted => 'Accepted',
+    OrderStatus.preparing => 'Preparing',
+    OrderStatus.ready => 'Ready',
+    OrderStatus.served => 'Served',
+    OrderStatus.billed => 'Billed',
+    OrderStatus.paid => 'Paid',
+    OrderStatus.completed => 'Completed',
+    OrderStatus.cancelled => 'Cancelled',
+    OrderStatus.refunded => 'Refunded',
+  };
 }
 
 class _ErrorState extends ConsumerWidget {

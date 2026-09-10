@@ -70,6 +70,36 @@ Kitchen/KDS, Billing, Reports) builds on top of, not those features themselves:
   which a fast enough double-tap could collide on — fixed with `nextCartLineId()`
   (`lib/features/pos/data/pos_cart_line.dart`), which appends a monotonic in-memory counter.
 
+  **A third, more serious bug found later** (prompted by a direct "check and fix the takeaway
+  order flow" request): a placed takeaway order became permanently unreachable the moment staff
+  navigated away from it. A dine-in order always has a reopen path — tapping its table again
+  finds it in `activeOrders` (`_openTable`) — but a takeaway order has no table, and
+  `_startTakeaway` always pushed a brand-new `OrderBuilderScreen` with no lookup of an existing
+  one; after placing it, the builder screen pops straight back to `PosHomeScreen`. From there,
+  nothing led back to it: `billing_screen.dart`'s Incomplete tab only shows orders already at
+  `SERVED`/`BILLED`/`PAID`, and the Kitchen Display screen has no order-detail navigation — so a
+  takeaway order sitting at `PLACED`/`ACCEPTED`/`PREPARING`/`READY` had no UI path to accept it,
+  add items, mark it served, or cancel it, and `BillingService.generateInvoice` requires
+  `SERVED` before a bill can even be generated. Fixed by adding an "Active takeaway orders" list
+  to `PosHomeScreen`, sourced from the same `activeOrdersProvider` fetch already used to tint
+  occupied tables (filtered to `o.type == 'TAKEAWAY'` — the backend already returns this list
+  oldest-first, `orderBy: { createdAt: 'asc' }`, so no client-side sort was needed); tapping a
+  row (new `_TakeawayOrderTile`) reopens `OrderBuilderScreen` with `existingOrder` set, exactly
+  like tapping an occupied table does. Mirrors the identical fix in
+  `apps/pos_web/src/features/tables/TablesScreen.tsx` — see `docs/pos-web.md`. Not yet verified
+  in this environment — no Flutter/Dart SDK here; reviewed by hand plus a bracket-balance check.
+
+  **A related backend bug found during the same investigation**: `OrdersService`'s
+  `computeOrderTotals` call (both in `createOrder` and `recalcTotals`) applied
+  `Outlet.serviceChargePercent` to every order regardless of `type` — a service charge is a
+  table-service fee (spec §16) and was being silently charged on takeaway orders too, which get
+  no table service. Fixed: both call sites now pass `serviceChargePercent: 0` for a `TAKEAWAY`
+  order (`recalcTotals` needed one extra field added to its existing `Promise.all` — it didn't
+  previously fetch the order's own `type`). `services/api`'s `tsc --noEmit` unchanged (53),
+  `eslint src/modules/orders` clean. `order-pricing.util.ts` itself (the pure calculator) was
+  deliberately left untouched — it stays order-type-agnostic by design, and the fix belongs at
+  the call sites that decide what rate to pass in, not inside the shared pricing math.
+
 - **Tables management** (`lib/features/tables/tables_management_screen.dart`) — floor/table
   *setup*, distinct from the POS's read-only table picker above: add a floor, add a table to a
   floor (name + seat count), edit an existing table (rename, change seat count, change `status`

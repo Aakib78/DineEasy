@@ -38,6 +38,21 @@ host stand.
   refresh on the realtime `table.updated`/`order.updated` hints (below) so another terminal's
   action shows up here without a manual pull — mirrors
   `apps/restaurant_app/lib/features/pos/pos_home_screen.dart`'s exact mental model.
+  - **Fixed a real bug: a placed takeaway order became permanently unreachable the moment staff
+    navigated away from it.** A dine-in order always has a reopen path — tapping its table again
+    finds it via `activeOrders` (`openTable`) — but a takeaway order has no table, and
+    `startTakeaway` always started a brand-new order with no lookup of an existing one. Once
+    `handleSubmit` placed it and navigated back to `/`, that order was gone from the UI: it never
+    appears in `BillingScreen`'s "Incomplete" tab (billable only from `SERVED` onward —
+    `BILLABLE_STATUSES`), and the Kitchen Display has no order-detail navigation at all, so
+    nothing anywhere could accept it, add items to it, mark it served, or cancel it — it would
+    sit stuck at `PLACED`/`ACCEPTED`/`PREPARING`/`READY` forever (`BillingService.generateInvoice`
+    requires `SERVED`). Fixed by adding an "Active takeaway orders" list to this screen, sourced
+    from the same `activeOrders` fetch already used to tint occupied tables (`o.type ===
+    'TAKEAWAY'`) — tapping one reopens `OrderScreen` with `existingOrderId` set, exactly like
+    tapping an occupied table does. `STATUS_LABELS` moved out of `OrderScreen.tsx` into a new
+    `orderStatusLabels.ts` so both screens share one label map without breaking React Fast
+    Refresh's "component-only file" convention. `tsc -b`/`oxlint` both clean.
 - **Order builder** (`src/features/order/`): menu browsing (`GET /menu` — the staff full tree,
   includes unavailable items unlike the QR guest tree), a variant/modifier customize sheet
   (client-side min/max-select enforcement is UX polish; `OrdersService.priceItems` on the backend

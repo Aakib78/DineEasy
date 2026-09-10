@@ -8,6 +8,7 @@ import { useAuth } from '../../lib/auth/AuthContext';
 import { PosCartProvider, usePosCart } from '../../lib/cart/PosCartContext';
 import { ItemCustomizeSheet } from './ItemCustomizeSheet';
 import { CartPanel } from './CartPanel';
+import { STATUS_LABELS } from './orderStatusLabels';
 
 interface OrderScreenState {
   type: 'DINE_IN' | 'TAKEAWAY';
@@ -15,20 +16,6 @@ interface OrderScreenState {
   tableName: string | null;
   existingOrderId: string | null;
 }
-
-const STATUS_LABELS: Record<Order['status'], string> = {
-  DRAFT: 'Draft',
-  PLACED: 'Placed',
-  ACCEPTED: 'Accepted',
-  PREPARING: 'Preparing',
-  READY: 'Ready',
-  SERVED: 'Served',
-  BILLED: 'Billed',
-  PAID: 'Paid',
-  COMPLETED: 'Completed',
-  CANCELLED: 'Cancelled',
-  REFUNDED: 'Refunded',
-};
 
 // Mirrors OrdersService.cancelItem's `itemsLockedFrom` guard: once a bill exists, line items are
 // frozen even before payment, since the bill already reflects them.
