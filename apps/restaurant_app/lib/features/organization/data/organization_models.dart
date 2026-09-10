@@ -44,9 +44,11 @@ class Organization {
 
   /// India GST identification number. Note: `Outlet` has its own separate `gstin` column too
   /// (GST registration is state-wise in India, so a multi-outlet business can legitimately have
-  /// a different one per outlet) — this is the organization-level one, not necessarily what
-  /// prints on a given outlet's invoice. Neither is wired into invoice generation yet
-  /// (`BillingService.generateInvoice` doesn't reference either field today).
+  /// a different one per outlet) — that outlet-level field is the one
+  /// `BillingService.buildReceiptPayload` actually prints on a receipt (see
+  /// `docs/architecture.md`'s "Printed receipts now carry the outlet's identity" bullet and
+  /// `OutletSettingsScreen`); this organization-level field is not referenced anywhere in
+  /// invoice/receipt generation.
   final String? gstin;
   final String? phone;
   final String? email;

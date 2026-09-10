@@ -7,6 +7,7 @@ import '../audit/audit_log_screen.dart';
 import '../kitchen/kitchen_stations_screen.dart';
 import '../menu_management/menu_management_screen.dart';
 import '../organization/organization_settings_screen.dart';
+import '../outlets/outlet_settings_screen.dart';
 import '../printers/printers_screen.dart';
 
 /// Replaces the old `PlaceholderScreen(title: 'Settings', ...)` in `home_shell.dart` — see
@@ -64,6 +65,21 @@ class SettingsScreen extends ConsumerWidget {
           onTap: () => Navigator.of(
             context,
           ).push(MaterialPageRoute<void>(builder: (_) => const OrganizationSettingsScreen())),
+        ),
+        const Divider(height: 1),
+        // GET /outlets/:id has no permission gate server-side either — every signed-in user can
+        // view the outlet they're currently working at; only settings.manage can edit (same
+        // AbsorbPointer-dims-the-form pattern as Business profile above). Distinct from that
+        // screen: this edits the outlet row, not the organization row — see
+        // OutletSettingsScreen's doc comment for why a chain needs both.
+        ListTile(
+          leading: const Icon(Icons.storefront),
+          title: const Text('Outlet settings'),
+          subtitle: const Text('This outlet\'s address, GSTIN, FSSAI license, and service charge'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => Navigator.of(
+            context,
+          ).push(MaterialPageRoute<void>(builder: (_) => const OutletSettingsScreen())),
         ),
         const Divider(height: 1),
         // Categories/items/variants/modifier-groups/tax-groups — full backend CRUD existed with

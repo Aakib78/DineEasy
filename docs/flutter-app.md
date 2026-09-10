@@ -406,13 +406,32 @@ Kitchen/KDS, Billing, Reports) builds on top of, not those features themselves:
   verified in this environment — no Flutter/Dart SDK here; the backend doc-comment-only change
   was verified with `tsc --noEmit` (unchanged) and eslint (clean).
 
+- **Outlet settings screen** (`lib/features/outlets/`, reached via Settings' new "Outlet
+  settings" entry, one below Business profile): `GET`/`PATCH /outlets/:id` existed, already
+  correct server-side (tenant-scoped, no bug found), but had no UI beyond the name-only dropdown
+  `StaffScreen` uses to assign a role — the address/GSTIN/FSSAI-license/service-charge fields
+  `BillingService.buildReceiptPayload` just started printing on receipts (see the receipt-identity
+  bullet in `docs/architecture.md`) had nowhere to actually be set outside a raw API call. Built to
+  the same pattern as Business profile: viewing has no permission gate server-side (every
+  signed-in user reaches it), editing is `settings.manage`-gated (Owner only), `AbsorbPointer`
+  dims the form for anyone else, `code`/`timezone` are shown read-only (no field on
+  `UpdateOutletDto` — `code` is immutable, v1 is India-only by design). Distinct from Business
+  profile: that edits the *organization* row (the legal entity, possibly spanning outlets); this
+  edits the *outlet* the signed-in user is currently at, via their JWT's `activeOutletId` claim —
+  `home_shell.dart` already refuses to render any nav destination while that claim is null, so the
+  screen can't be reached without one. Also edits `serviceChargePercent`/`roundOffEnabled`, which
+  feed `order-pricing.util.ts`'s total computation directly, and an emptied text field can be sent
+  as `''` to clear it server-side (unlike `Organization.email`, `Outlet` has no `@IsEmail()`-
+  validated field needing the null-to-omit workaround). No backend changes needed. Not yet
+  verified in this environment — no Flutter/Dart SDK here.
+
 **Not built yet**: offline/local-cache behavior (tracked with the LAN/offline backend slice —
 docs/offline-mode.md), real OS-level push/local notifications (the in-app inbox above is the
 step before that — it's a poll-driven bell, not a system notification), and the
 Windows/Android platform scaffolding itself (see below). Every permission-gated feature-area
 destination in the nav shell (POS, Tables, Kitchen, Billing, Reports, Staff) — and now Settings,
-via its Business profile, Printers, Menu, Audit log, and Kitchen stations entries — has a real
-screen; there are no placeholder destinations left.
+via its Business profile, Outlet settings, Printers, Menu, Audit log, and Kitchen stations
+entries — has a real screen; there are no placeholder destinations left.
 
 ## Why there's no `android/`, `ios/`, or `windows/` folder here
 
